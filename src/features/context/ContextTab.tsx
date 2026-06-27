@@ -83,7 +83,7 @@ export function ContextTab() {
           <button
             onClick={() => ctx.mutate()}
             disabled={ctx.isPending}
-            className="w-full rounded bg-eikon-navy px-4 py-2 text-white disabled:opacity-50"
+            className="w-full rounded bg-eikon-orange px-4 py-2 text-white disabled:opacity-50"
           >
             {ctx.isPending ? "Analysing…" : "Analyze location"}
           </button>

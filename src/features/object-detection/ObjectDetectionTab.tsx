@@ -131,7 +131,7 @@ export function ObjectDetectionTab() {
         <button
           onClick={() => det.mutate()}
           disabled={det.isPending || !valid}
-          className="w-full rounded bg-eikon-navy px-4 py-2 text-white disabled:opacity-50"
+          className="w-full rounded bg-eikon-orange px-4 py-2 text-white disabled:opacity-50"
         >
           {det.isPending ? "Detecting…" : "Detect Objects"}
         </button>
@@ -221,7 +221,7 @@ function DetectionResults({
   );
 }
 
-const PIE_COLORS = ["#1E3A5F", "#2c7be5", "#28a745", "#ffc107", "#dc3545", "#6f42c1", "#fd7e14", "#20c997"];
+const PIE_COLORS = ["#0D9488", "#EA580C", "#1E2D6B", "#2c7be5", "#28a745", "#ffc107", "#6f42c1", "#20c997"];
 
 function DetectionChart({ records }: { records: ObjectRecord[] }) {
   const barData = [...records].sort((a, b) => a.count - b.count);

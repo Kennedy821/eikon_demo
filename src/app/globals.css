@@ -3,8 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --eikon-navy: #1e3a5f;
-  --eikon-muted: #666666;
+  --eikon-teal: #0d9488;
+  --eikon-orange: #ea580c;
+  --eikon-midnight: #1e2d6b;
+  --eikon-muted: #64748b;
 }
 
 html,
@@ -14,4 +16,5 @@ body {
 
 body {
   @apply bg-white text-gray-900 antialiased;
+  font-family: var(--font-inter), "Helvetica Neue", Arial, sans-serif;
 }

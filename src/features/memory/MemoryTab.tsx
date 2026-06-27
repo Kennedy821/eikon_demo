@@ -69,7 +69,7 @@ export function MemoryTab() {
             <button
               onClick={() => reflect.mutate()}
               disabled={reflect.isPending}
-              className="rounded bg-eikon-navy px-4 py-2 text-white disabled:opacity-50"
+              className="rounded bg-eikon-orange px-4 py-2 text-white disabled:opacity-50"
             >
               {reflect.isPending ? "Generating…" : "Generate reflection"}
             </button>

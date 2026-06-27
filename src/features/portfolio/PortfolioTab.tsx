@@ -153,7 +153,7 @@ export function PortfolioTab() {
           <button
             onClick={() => run.mutate()}
             disabled={run.isPending || pairs.length === 0}
-            className="w-full rounded bg-eikon-navy px-4 py-2 text-white disabled:opacity-50"
+            className="w-full rounded bg-eikon-orange px-4 py-2 text-white disabled:opacity-50"
           >
             {run.isPending ? "Comparing…" : "Run comparison"}
           </button>
