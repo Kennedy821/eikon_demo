@@ -32,8 +32,6 @@ export function SearchTab() {
     isComplete,
     results,
     stage,
-    stageCaptionExtra,
-    stage1Info,
     error,
   } = useSearchJob();
 
@@ -150,14 +148,11 @@ export function SearchTab() {
                   style={{ width: `${stage.progress}%` }}
                 />
               </div>
-              <p className="text-xs text-eikon-muted">
-                {stage.detail}
-                {stageCaptionExtra ? ` ${stageCaptionExtra}` : ""}
-              </p>
+              <p className="text-xs text-eikon-muted">{stage.detail}</p>
             </div>
           )}
 
-          {isComplete && <SearchSummary results={results} stage1Info={stage1Info} />}
+          {isComplete && <SearchSummary results={results} />}
         </div>
 
         {/* ---- Right: results ---- */}

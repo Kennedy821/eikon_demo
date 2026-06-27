@@ -9,11 +9,9 @@ import { useAuth } from "./useAuth";
 import type { SearchResult } from "@/lib/types";
 
 /**
- * Search job lifecycle — replaces search_locations()'s blocking
- * submit + time.sleep poll loop. Submitting stores a jobId; a polling query
- * then refetches status every POLL.searchStatus ms until "completed".
- *
- * Crucially, the UI never unmounts/reruns while polling (the Streamlit pain).
+ * Search job lifecycle — mirrors crawl_uk's submit→poll pattern.
+ * Submits, stores a jobId, then polls status + the checkJobComplete
+ * progress endpoint (for stage display) until "completed".
  */
 export function useSearchJob() {
   const { apiKey } = useAuth();
@@ -41,7 +39,6 @@ export function useSearchJob() {
   const results: SearchResult[] = isComplete ? (status.data?.results ?? []) : [];
   const isRunning = submit.isPending || (!!jobId && !isComplete);
 
-  // Stage-progress poll (check_job_complete) — runs alongside the result poll.
   const progress = useQuery({
     queryKey: ["search-progress", jobId],
     queryFn: () => getSearchProgress(apiKey as string),
@@ -54,19 +51,6 @@ export function useSearchJob() {
     : progress.data
       ? stageFromCheckpoint(progress.data.latestCkpt)
       : STAGES[0];
-
-  // Stage-specific caption enrichments (mirror the Streamlit per-stage logic),
-  // sourced from the server-side progress files.
-  let stageCaptionExtra: string | null = null;
-  const p = progress.data;
-  if (p) {
-    if (stage.key === "stage_2" && p.candidateCount) {
-      stageCaptionExtra = `(${p.candidateCount} candidate locations under review)`;
-    } else if (stage.key === "stage_5" && p.thoughtsCount > 0) {
-      const icon = p.latestEvaluation === "1" ? "✅" : "❌";
-      stageCaptionExtra = `Evaluated ${p.thoughtsCount} locations… Latest: ${icon}`;
-    }
-  }
 
   function reset() {
     setJobId(null);
@@ -81,8 +65,6 @@ export function useSearchJob() {
     isComplete,
     results,
     stage,
-    stageCaptionExtra,
-    stage1Info: progress.data?.stage1 ?? null,
     error: submit.error ?? status.error,
   };
 }
