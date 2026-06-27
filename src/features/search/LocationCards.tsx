@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getResolution } from "h3-js";
 import { getContext } from "@/lib/api";
@@ -12,8 +12,19 @@ import type { SearchResult } from "@/lib/types";
  * results; each card shows relevance + AI recommendation, coordinates, the
  * satellite image, detected objects, description, and the AI rationale.
  */
-export function LocationCards({ results }: { results: SearchResult[] }) {
-  const [index, setIndex] = useState(0);
+export function LocationCards({
+  results,
+  initialIndex = 0,
+}: {
+  results: SearchResult[];
+  initialIndex?: number;
+}) {
+  const [index, setIndex] = useState(initialIndex);
+
+  useEffect(() => {
+    setIndex(initialIndex);
+  }, [initialIndex]);
+
   if (results.length === 0) return <p className="text-sm text-eikon-muted">No results to display.</p>;
 
   const i = Math.max(0, Math.min(index, results.length - 1));

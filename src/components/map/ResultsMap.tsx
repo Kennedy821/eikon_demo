@@ -7,22 +7,18 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useMemo } from "react";
 import type { SearchResult } from "@/lib/types";
 
-/**
- * deck.gl map of search results — ports the pydeck ScatterplotLayer in the
- * Streamlit Map View. Points are coloured by ai_model_evaluation (green =
- * recommended >=0.5, red = not), radius/zoom adapt to how spread out the
- * results are, and a tooltip shows id / AI status / relevance.
- */
-
 const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
 const GREEN: [number, number, number, number] = [40, 167, 69, 200];
 const RED: [number, number, number, number] = [220, 53, 69, 200];
 const NAVY: [number, number, number, number] = [30, 58, 95, 200];
 
+type PointDatum = SearchResult & { _resultIndex: number };
+
 interface Props {
   results: SearchResult[];
   height?: number;
+  onClickResult?: (index: number) => void;
 }
 
 function colorFor(r: SearchResult): [number, number, number, number] {
@@ -30,10 +26,15 @@ function colorFor(r: SearchResult): [number, number, number, number] {
   return r.aiModelEvaluation >= 0.5 ? GREEN : RED;
 }
 
-export default function ResultsMap({ results, height = 480 }: Props) {
-  const points = useMemo(() => results.filter((r) => r.lat !== 0 && r.lon !== 0), [results]);
+export default function ResultsMap({ results, height = 480, onClickResult }: Props) {
+  const points = useMemo<PointDatum[]>(
+    () =>
+      results
+        .map((r, i) => ({ ...r, _resultIndex: i }))
+        .filter((r) => r.lat !== 0 && r.lon !== 0),
+    [results],
+  );
 
-  // Adaptive radius + zoom from the spread of points (mirrors the Python logic).
   const { radius, zoom, centerLat, centerLon } = useMemo(() => {
     if (points.length === 0) {
       return { radius: 500, zoom: 9, centerLat: 51.5074, centerLon: -0.1278 };
@@ -53,7 +54,7 @@ export default function ResultsMap({ results, height = 480 }: Props) {
   }, [points]);
 
   const layers = [
-    new ScatterplotLayer<SearchResult>({
+    new ScatterplotLayer<PointDatum>({
       id: "results",
       data: points,
       getPosition: (d) => [d.lon, d.lat],
@@ -63,6 +64,9 @@ export default function ResultsMap({ results, height = 480 }: Props) {
       radiusMaxPixels: 24,
       pickable: true,
       autoHighlight: true,
+      onClick: ({ object }) => {
+        if (object && onClickResult) onClickResult(object._resultIndex);
+      },
     }),
   ];
 
@@ -72,8 +76,9 @@ export default function ResultsMap({ results, height = 480 }: Props) {
         initialViewState={{ longitude: centerLon, latitude: centerLat, zoom }}
         controller
         layers={layers}
+        getCursor={({ isHovering }) => (onClickResult && isHovering ? "pointer" : "grab")}
         getTooltip={({ object }) => {
-          const r = object as SearchResult | null;
+          const r = object as PointDatum | null;
           if (!r) return null;
           const aiStatus =
             r.aiModelEvaluation === null || r.aiModelEvaluation === undefined
@@ -83,7 +88,18 @@ export default function ResultsMap({ results, height = 480 }: Props) {
                 : "Not Recommended";
           const rel = r.relevance !== undefined ? `${(r.relevance * 100).toFixed(1)}%` : "—";
           return {
-            text: `${r.locationId}\nAI Evaluation: ${aiStatus}\nRelevance: ${rel}`,
+            html: `<div style="font-family:sans-serif;font-size:12px;line-height:1.7">
+              <strong>${r.locationId}</strong><br/>
+              AI: ${aiStatus} &nbsp;·&nbsp; Relevance: ${rel}
+              ${onClickResult ? '<br/><span style="color:#5eead4;font-size:11px">Click to view location profile →</span>' : ""}
+            </div>`,
+            style: {
+              background: "rgba(0,0,0,0.82)",
+              color: "#fff",
+              borderRadius: "6px",
+              padding: "8px 12px",
+              pointerEvents: "none",
+            },
           };
         }}
       >
