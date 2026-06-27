@@ -25,6 +25,7 @@ export function SearchTab() {
   const [spatialResolution, setSpatialResolution] = useState("UK - all");
   const [borough, setBorough] = useState((UK_AREAS as string[])[0] ?? "");
   const [view, setView] = useState<ResultView>("Map View");
+  const [selectedProfileIndex, setSelectedProfileIndex] = useState(0);
   const {
     submit,
     reset,
@@ -181,8 +182,18 @@ export function SearchTab() {
                 ))}
               </div>
 
-              {view === "Map View" && <ResultsMap results={results} />}
-              {view === "Location Profile" && <LocationCards results={results} />}
+              {view === "Map View" && (
+                <ResultsMap
+                  results={results}
+                  onClickResult={(i) => {
+                    setSelectedProfileIndex(i);
+                    setView("Location Profile");
+                  }}
+                />
+              )}
+              {view === "Location Profile" && (
+                <LocationCards results={results} initialIndex={selectedProfileIndex} />
+              )}
               {view === "Data Table" && <DataTable results={results} />}
             </div>
           ) : (
