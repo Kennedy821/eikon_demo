@@ -2,22 +2,7 @@
 
 import type { SearchResult } from "@/lib/types";
 
-/**
- * Search Process Summary — ports the AI-evaluation portion of
- * _render_search_summary: total found, recommended vs not-recommended counts,
- * and a sample rationale from each bucket.
- *
- * The Stage-1 query-processing breakdown and "final status" are intentionally
- * omitted — they read server-local files in Streamlit and need a new backend
- * HTTP endpoint (tracked as the backend-blocked task).
- */
-export function SearchSummary({
-  results,
-  stage1Info,
-}: {
-  results: SearchResult[];
-  stage1Info?: { original: string | null; cleaned: string | null } | null;
-}) {
+export function SearchSummary({ results }: { results: SearchResult[] }) {
   if (results.length === 0) return null;
 
   const withEval = results.filter(
@@ -34,22 +19,6 @@ export function SearchSummary({
   return (
     <div className="space-y-3 rounded-lg border bg-green-50 p-4">
       <p className="font-semibold text-green-800">Found {results.length} locations!</p>
-
-      {stage1Info && (stage1Info.original || stage1Info.cleaned) && (
-        <div className="space-y-1 border-b border-green-200 pb-2 text-sm">
-          <h3 className="font-semibold text-eikon-navy">Stage 1 — Query Processing</h3>
-          {stage1Info.original && (
-            <p className="text-xs text-eikon-muted">
-              <em>Original:</em> {stage1Info.original}
-            </p>
-          )}
-          {stage1Info.cleaned && (
-            <p className="text-xs text-eikon-muted">
-              <em>Cleaned:</em> {stage1Info.cleaned}
-            </p>
-          )}
-        </div>
-      )}
 
       {hasEval && (
         <div className="space-y-2 text-sm">

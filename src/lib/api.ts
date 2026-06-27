@@ -55,10 +55,6 @@ export function getSearchStatus(jobId: string) {
 export interface SearchProgress {
   latestCkpt: string;
   jobComplete: boolean;
-  thoughtsCount: number;
-  latestEvaluation: string | null;
-  candidateCount: number | null;
-  stage1: { original: string | null; cleaned: string | null } | null;
 }
 
 export function getSearchProgress(apiKey: string) {
