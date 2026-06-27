@@ -37,7 +37,7 @@ export function ChatTab() {
   return (
     <div className="flex h-[calc(100vh-150px)] flex-col">
       <div className="mb-3 flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold text-eikon-navy">Eikon AI</h1>
+        <h1 className="text-2xl font-bold text-eikon-midnight">Eikon AI</h1>
         <span className="text-xs text-eikon-muted">Geospatial intelligence assistant</span>
       </div>
 
@@ -78,7 +78,7 @@ export function ChatTab() {
         <button
           type="submit"
           disabled={isThinking || !input.trim()}
-          className="rounded-lg bg-eikon-navy px-6 py-3 font-medium text-white disabled:opacity-50"
+          className="rounded-lg bg-eikon-orange px-6 py-3 font-medium text-white disabled:opacity-50"
         >
           Send
         </button>
@@ -162,7 +162,7 @@ function Thinking({ steps }: { steps: TraceStep[] }) {
 
   return (
     <div className="max-w-3xl rounded-2xl border border-eikon-panel bg-eikon-panel/60 p-4">
-      <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-eikon-navy">
+      <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-eikon-midnight">
         <span className="h-2 w-2 animate-pulse rounded-full bg-eikon-navy" />
         {recent.length > 0 ? recent[activeIndex].label : "Thinking…"}
       </div>
@@ -198,7 +198,7 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-6 p-6 text-center">
       <div>
-        <h2 className="text-xl font-semibold text-eikon-navy">Ask EIKON</h2>
+        <h2 className="text-xl font-semibold text-eikon-midnight">Ask EIKON</h2>
         <p className="mt-1 text-sm text-eikon-muted">
           Locations, imagery, comparisons and object detection across the UK.
         </p>
@@ -208,7 +208,7 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }) {
           <button
             key={s}
             onClick={() => onPick(s)}
-            className="rounded-full border px-4 py-2 text-sm text-eikon-navy hover:bg-eikon-panel"
+            className="rounded-full border px-4 py-2 text-sm text-eikon-midnight hover:bg-eikon-panel"
           >
             {s}
           </button>

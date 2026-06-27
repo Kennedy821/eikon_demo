@@ -12,7 +12,7 @@ export function TabPlaceholder({
 }) {
   return (
     <AppShell>
-      <h1 className="text-2xl font-bold text-eikon-navy">{title}</h1>
+      <h1 className="text-2xl font-bold text-eikon-midnight">{title}</h1>
       <p className="mt-2 text-eikon-muted">
         Not yet migrated — scheduled for {phase}. See
         <code className="mx-1">EIKON_FRONTEND_MIGRATION_PLAN.md</code>.

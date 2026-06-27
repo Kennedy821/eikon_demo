@@ -49,7 +49,7 @@ export function SearchTab() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-eikon-navy">Location Search</h1>
+        <h1 className="text-2xl font-bold text-eikon-midnight">Location Search</h1>
         <p className="text-sm text-eikon-muted">
           Search for locations across the UK using natural language queries.
         </p>
@@ -60,7 +60,7 @@ export function SearchTab() {
         {/* ---- Left: search parameters + progress + summary ---- */}
         <div className="space-y-4">
           <form onSubmit={onSubmit} className="space-y-3 rounded-lg border p-4">
-            <h2 className="text-sm font-semibold text-eikon-navy">Search parameters</h2>
+            <h2 className="text-sm font-semibold text-eikon-midnight">Search parameters</h2>
 
             <label className="block text-sm">
               <span className="mb-1 block text-eikon-muted">Spatial resolution</span>
@@ -126,7 +126,7 @@ export function SearchTab() {
                 <button
                   type="button"
                   onClick={reset}
-                  className="rounded border px-4 py-2 text-eikon-navy"
+                  className="rounded border px-4 py-2 text-eikon-midnight"
                 >
                   Reset
                 </button>
@@ -137,7 +137,7 @@ export function SearchTab() {
           {isRunning && (
             <div className="space-y-2 rounded-lg border p-4">
               <div className="flex justify-between text-sm">
-                <span className={stage.level === "success" ? "text-green-700" : "text-eikon-navy"}>
+                <span className={stage.level === "success" ? "text-green-700" : "text-eikon-midnight"}>
                   {stage.status}
                 </span>
                 <span className="text-eikon-muted">{stage.progress}%</span>
@@ -172,7 +172,7 @@ export function SearchTab() {
                     onClick={() => setView(v)}
                     className={`border-b-2 px-3 py-2 text-sm font-medium ${
                       view === v
-                        ? "border-eikon-navy text-eikon-navy"
+                        ? "border-eikon-navy text-eikon-navy font-bold"
                         : "border-transparent text-eikon-muted hover:text-eikon-navy"
                     }`}
                   >
@@ -237,12 +237,12 @@ function DataTable({ results }: { results: SearchResult[] }) {
 
   return (
     <div className="space-y-3">
-      <button onClick={downloadCsv} className="rounded border px-4 py-2 text-sm text-eikon-navy">
+      <button onClick={downloadCsv} className="rounded border px-4 py-2 text-sm text-eikon-midnight">
         Download Full Results (CSV)
       </button>
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
-          <thead className="bg-eikon-panel text-left text-eikon-navy">
+          <thead className="bg-eikon-panel text-left text-eikon-midnight">
             <tr>
               {columns.map((c) => (
                 <th key={c} className="whitespace-nowrap px-3 py-2">

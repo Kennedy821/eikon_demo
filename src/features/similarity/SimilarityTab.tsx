@@ -54,7 +54,7 @@ export function SimilarityTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-eikon-navy">Location Similarity</h1>
+        <h1 className="text-2xl font-bold text-eikon-midnight">Location Similarity</h1>
         <p className="text-sm text-eikon-muted">Compare the similarity between two locations.</p>
       </div>
 
@@ -79,7 +79,7 @@ export function SimilarityTab() {
         <LocationInputs label="Location 1 (e.g. Regent's Park)" value={a} onChange={setA} />
         <LocationInputs label="Location 2 (e.g. Wimbledon)" value={b} onChange={setB} />
         <div className="space-y-2">
-          <h2 className="font-semibold text-eikon-navy">Settings</h2>
+          <h2 className="font-semibold text-eikon-midnight">Settings</h2>
           <label className="block text-sm">
             <span className="mb-1 block text-eikon-muted">Resolution</span>
             <select
@@ -179,7 +179,7 @@ function LocationInputs({
 }) {
   return (
     <div className="space-y-2">
-      <h2 className="font-semibold text-eikon-navy">{label}</h2>
+      <h2 className="font-semibold text-eikon-midnight">{label}</h2>
       <div className="flex gap-2">
         <input
           value={value.lat}

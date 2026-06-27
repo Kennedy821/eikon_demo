@@ -29,7 +29,7 @@ export function LocationCards({ results }: { results: SearchResult[] }) {
         >
           ← Previous
         </button>
-        <span className="text-sm font-semibold text-eikon-navy">
+        <span className="text-sm font-semibold text-eikon-midnight">
           Location {i + 1} of {results.length}
         </span>
         <button
@@ -127,7 +127,7 @@ function LocationCard({ loc }: { loc: SearchResult }) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-eikon-navy">Coordinates</h3>
+          <h3 className="text-sm font-semibold text-eikon-midnight">Coordinates</h3>
           <pre className="rounded bg-eikon-panel p-2 text-xs">
             Lat: {loc.lat.toFixed(6)}
             {"\n"}Lon: {loc.lon.toFixed(6)}
@@ -144,7 +144,7 @@ function LocationCard({ loc }: { loc: SearchResult }) {
             !image.isLoading && (
               <button
                 onClick={() => image.refetch()}
-                className="rounded border px-3 py-1 text-sm text-eikon-navy"
+                className="rounded border px-3 py-1 text-sm text-eikon-midnight"
               >
                 Retry image fetch
               </button>
@@ -155,7 +155,7 @@ function LocationCard({ loc }: { loc: SearchResult }) {
         <div className="space-y-2">
           {loc.objectsDetected && loc.objectsDetected.length > 0 && (
             <>
-              <h3 className="text-sm font-semibold text-eikon-navy">Objects Detected</h3>
+              <h3 className="text-sm font-semibold text-eikon-midnight">Objects Detected</h3>
               <ul className="text-sm">
                 {loc.objectsDetected.slice(0, 6).map((o, k) => (
                   <li key={k}>
@@ -170,7 +170,7 @@ function LocationCard({ loc }: { loc: SearchResult }) {
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-eikon-navy">Location Description</h3>
+        <h3 className="text-sm font-semibold text-eikon-midnight">Location Description</h3>
         <p className="rounded bg-eikon-panel p-3 text-sm">
           {loc.description ?? "No description available."}
         </p>
@@ -178,7 +178,7 @@ function LocationCard({ loc }: { loc: SearchResult }) {
 
       {rationale && (
         <div>
-          <h3 className="text-sm font-semibold text-eikon-navy">AI Model Evaluation</h3>
+          <h3 className="text-sm font-semibold text-eikon-midnight">AI Model Evaluation</h3>
           <p
             className={`rounded p-3 text-sm ${
               isRecommended === true
@@ -212,7 +212,7 @@ function Badge({
       ? "bg-green-100 text-green-800 border-green-200"
       : tone === "bad"
         ? "bg-red-100 text-red-800 border-red-200"
-        : "bg-white text-eikon-navy border-gray-200";
+        : "bg-white text-eikon-midnight border-gray-200";
   return (
     <div className="text-center">
       <div className="mb-1 text-xs text-eikon-muted">{label}</div>

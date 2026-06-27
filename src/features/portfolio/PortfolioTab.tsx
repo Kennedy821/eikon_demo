@@ -88,7 +88,7 @@ export function PortfolioTab() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-eikon-navy">Portfolio Comparison</h1>
+        <h1 className="text-2xl font-bold text-eikon-midnight">Portfolio Comparison</h1>
         <p className="text-sm text-eikon-muted">
           Compare multiple location pairs in batch. Upload a CSV, enter pairs manually,
           or use the example data.
@@ -99,7 +99,7 @@ export function PortfolioTab() {
       <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
         {/* ---- Left: configuration ---- */}
         <div className="space-y-3 rounded-lg border p-4">
-          <h2 className="text-sm font-semibold text-eikon-navy">Configuration</h2>
+          <h2 className="text-sm font-semibold text-eikon-midnight">Configuration</h2>
 
           <label className="block text-sm">
             <span className="mb-1 block text-eikon-muted">Resolution</span>
@@ -128,21 +128,21 @@ export function PortfolioTab() {
           </label>
 
           <div className="space-y-2 border-t pt-3">
-            <span className="block text-sm font-medium text-eikon-navy">Input data</span>
+            <span className="block text-sm font-medium text-eikon-midnight">Input data</span>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => setPairs(EXAMPLE)}
-                className="rounded border px-3 py-1.5 text-sm text-eikon-navy"
+                className="rounded border px-3 py-1.5 text-sm text-eikon-midnight"
               >
                 Load example data
               </button>
-              <label className="cursor-pointer rounded border px-3 py-1.5 text-center text-sm text-eikon-navy">
+              <label className="cursor-pointer rounded border px-3 py-1.5 text-center text-sm text-eikon-midnight">
                 Upload CSV
                 <input type="file" accept=".csv" onChange={onCsv} className="hidden" />
               </label>
               <button
                 onClick={() => setPairs((p) => [...p, { ...BLANK_PAIR }])}
-                className="rounded border px-3 py-1.5 text-sm text-eikon-navy"
+                className="rounded border px-3 py-1.5 text-sm text-eikon-midnight"
               >
                 Add pair
               </button>
@@ -162,12 +162,12 @@ export function PortfolioTab() {
         {/* ---- Right: input table + results ---- */}
         <div className="min-w-0 space-y-4">
           <div>
-            <h2 className="mb-2 text-sm font-semibold text-eikon-navy">
+            <h2 className="mb-2 text-sm font-semibold text-eikon-midnight">
               Location pairs ({pairs.length})
             </h2>
             <div className="overflow-x-auto rounded-lg border">
               <table className="w-full text-sm">
-                <thead className="bg-eikon-panel text-left text-eikon-navy">
+                <thead className="bg-eikon-panel text-left text-eikon-midnight">
                   <tr>
                     <th className="px-2 py-2">Orig ID</th>
                     <th className="px-2 py-2">Orig lat</th>

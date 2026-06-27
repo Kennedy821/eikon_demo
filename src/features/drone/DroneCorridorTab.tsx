@@ -81,7 +81,7 @@ export function DroneCorridorTab() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-eikon-navy">Travel Corridor Assessment</h1>
+        <h1 className="text-2xl font-bold text-eikon-midnight">Travel Corridor Assessment</h1>
         <p className="text-sm text-eikon-muted">
           Assess risk along a BVLOS travel corridor and compute an optimised low-risk route.
         </p>
@@ -91,7 +91,7 @@ export function DroneCorridorTab() {
         {/* ---- Left: inputs ---- */}
         <div className="space-y-4">
           <div className="space-y-3 rounded-lg border p-4">
-            <h2 className="text-sm font-semibold text-eikon-navy">Origin &amp; Destination</h2>
+            <h2 className="text-sm font-semibold text-eikon-midnight">Origin &amp; Destination</h2>
             <div className="flex gap-4 text-sm">
               {(["Coordinates", "H3 Hex ID"] as const).map((m) => (
                 <label key={m} className="flex items-center gap-1">
@@ -117,7 +117,7 @@ export function DroneCorridorTab() {
           </div>
 
           <div className="space-y-3 rounded-lg border p-4">
-            <h2 className="text-sm font-semibold text-eikon-navy">Corridor Parameters</h2>
+            <h2 className="text-sm font-semibold text-eikon-midnight">Corridor Parameters</h2>
             <label className="block text-sm">
               <span className="mb-1 block text-eikon-muted">Buffer Width: {bufferKm} km</span>
               <input
@@ -160,7 +160,7 @@ export function DroneCorridorTab() {
             {isRunning ? "Assessing…" : "Assess Corridor"}
           </button>
           {isRunning && (
-            <button onClick={reset} className="w-full rounded border px-4 py-2 text-sm text-eikon-navy">
+            <button onClick={reset} className="w-full rounded border px-4 py-2 text-sm text-eikon-midnight">
               Reset assessment lock
             </button>
           )}
@@ -260,7 +260,7 @@ function Results({
     <div className="space-y-4">
       {routes.length > 0 && (
         <div className="flex items-center gap-3 text-sm">
-          <span className="font-medium text-eikon-navy">Shortest</span>
+          <span className="font-medium text-eikon-midnight">Shortest</span>
           <input
             type="range"
             min={0}
@@ -270,7 +270,7 @@ function Results({
             onChange={(e) => onRerank(parseFloat(e.target.value))}
             className="flex-1"
           />
-          <span className="font-medium text-eikon-navy">Safest</span>
+          <span className="font-medium text-eikon-midnight">Safest</span>
         </div>
       )}
 
@@ -287,7 +287,7 @@ function Results({
             key={v}
             onClick={() => onView(v)}
             className={`border-b-2 px-3 py-2 text-sm font-medium ${
-              view === v ? "border-eikon-navy text-eikon-navy" : "border-transparent text-eikon-muted hover:text-eikon-navy"
+              view === v ? "border-eikon-navy text-eikon-navy font-bold" : "border-transparent text-eikon-muted hover:text-eikon-navy"
             }`}
           >
             {v}
@@ -343,10 +343,10 @@ function routeToDatum(r: DroneRoute): RouteDatum {
 function RouteTable({ routes }: { routes: DroneRoute[]; withRanks?: boolean }) {
   return (
     <div>
-      <h3 className="mb-2 text-sm font-semibold text-eikon-navy">Route Comparison</h3>
+      <h3 className="mb-2 text-sm font-semibold text-eikon-midnight">Route Comparison</h3>
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
-          <thead className="bg-eikon-panel text-left text-eikon-navy">
+          <thead className="bg-eikon-panel text-left text-eikon-midnight">
             <tr>
               <th className="px-3 py-2">Percentile</th>
               <th className="px-3 py-2">Threshold</th>
@@ -414,7 +414,7 @@ function DataTable({ routes }: { routes: DroneRoute[] }) {
   return (
     <div className="space-y-3">
       <RouteTable routes={routes} />
-      <button onClick={downloadCsv} className="rounded border px-4 py-2 text-sm text-eikon-navy">
+      <button onClick={downloadCsv} className="rounded border px-4 py-2 text-sm text-eikon-midnight">
         Download Routes CSV
       </button>
     </div>
@@ -445,7 +445,7 @@ function Legend({
     <div className="space-y-4">
       <div className="rounded-lg border p-3">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-bold text-eikon-navy">Risk Score</span>
+          <span className="text-xs font-bold text-eikon-midnight">Risk Score</span>
           <button
             onClick={onToggleChoropleth}
             aria-pressed={showChoropleth}
@@ -478,7 +478,7 @@ function Legend({
         </div>
         {showRouteKeys && (
           <div className="mt-2 border-t pt-2">
-            <div className="mb-1 text-xs font-semibold text-eikon-navy">Routes</div>
+            <div className="mb-1 text-xs font-semibold text-eikon-midnight">Routes</div>
             <div className="mb-1 flex items-center gap-2">
               <span className="inline-block h-1 w-4 rounded-full" style={{ background: "rgb(0,128,128)" }} />
               <span className="text-xs text-eikon-muted">Recommended</span>
@@ -492,14 +492,14 @@ function Legend({
       </div>
 
       <div className="rounded-lg border p-3">
-        <div className="mb-2 text-xs font-bold text-eikon-navy">Basemap</div>
+        <div className="mb-2 text-xs font-bold text-eikon-midnight">Basemap</div>
         <div className="flex flex-col gap-1">
           {(["Dark", "Light", "Satellite"] as Basemap[]).map((b) => (
             <button
               key={b}
               onClick={() => onBasemap(b)}
               className={`rounded px-2 py-1 text-sm ${
-                basemap === b ? "bg-eikon-navy text-white" : "border text-eikon-navy"
+                basemap === b ? "bg-eikon-navy text-white" : "border text-eikon-midnight"
               }`}
             >
               {b}
@@ -520,7 +520,7 @@ function CriteriaEditor({
 }) {
   return (
     <div className="space-y-2 rounded-lg border p-4">
-      <h2 className="text-sm font-semibold text-eikon-navy">Assessment Criteria</h2>
+      <h2 className="text-sm font-semibold text-eikon-midnight">Assessment Criteria</h2>
       {criteria.map((c, i) => (
         <input
           key={i}
@@ -534,7 +534,7 @@ function CriteriaEditor({
         {criteria.length < 10 && (
           <button
             onClick={() => onChange([...criteria, ""])}
-            className="rounded border px-3 py-1 text-sm text-eikon-navy"
+            className="rounded border px-3 py-1 text-sm text-eikon-midnight"
           >
             Add criterion
           </button>
@@ -542,7 +542,7 @@ function CriteriaEditor({
         {criteria.length > 1 && (
           <button
             onClick={() => onChange(criteria.slice(0, -1))}
-            className="rounded border px-3 py-1 text-sm text-eikon-navy"
+            className="rounded border px-3 py-1 text-sm text-eikon-midnight"
           >
             Delete criterion
           </button>
@@ -556,7 +556,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border bg-eikon-panel p-3 text-center">
       <div className="text-xs uppercase tracking-wide text-eikon-muted">{label}</div>
-      <div className="mt-1 text-xl font-bold text-eikon-navy">{value}</div>
+      <div className="mt-1 text-xl font-bold text-eikon-midnight">{value}</div>
     </div>
   );
 }
