@@ -155,7 +155,7 @@ export function DroneCorridorTab() {
           <button
             onClick={onAssess}
             disabled={isRunning || !validCriteria}
-            className="w-full rounded bg-eikon-navy px-4 py-2 text-white disabled:opacity-50"
+            className="w-full rounded bg-eikon-orange px-4 py-2 text-white disabled:opacity-50"
           >
             {isRunning ? "Assessing…" : "Assess Corridor"}
           </button>

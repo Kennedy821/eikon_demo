@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -26,7 +27,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { authenticated, userEmail, logout } = useAuth();
   const { data: credits } = useCredits();
 
-  // Route guard — replaces the `if not authenticated: render_login_page()` gate.
   useEffect(() => {
     if (!authenticated) router.replace("/login");
   }, [authenticated, router]);
@@ -35,11 +35,21 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen">
-      <header className="flex items-center justify-between border-b px-6 py-3">
-        <span className="text-2xl font-bold text-eikon-navy">EIKON</span>
-        <div className="flex items-center gap-4 text-sm text-eikon-muted">
+      {/* Teal header bar */}
+      <header className="flex items-center justify-between bg-eikon-navy px-6 py-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <Image
+            src="/project_infinite_logo.png"
+            alt="EIKON logo"
+            width={32}
+            height={32}
+            className="rounded"
+          />
+          <span className="text-2xl font-bold tracking-tight text-white">EIKON</span>
+        </div>
+        <div className="flex items-center gap-4 text-sm text-white/80">
           <span
-            className="rounded-full bg-eikon-panel px-3 py-1 font-medium text-eikon-navy"
+            className="rounded-full bg-white/20 px-3 py-1 font-medium text-white"
             title="API credit balance (GBP)"
           >
             £{formatCredits(credits?.balance)}
@@ -47,13 +57,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span>{userEmail}</span>
           <button
             onClick={logout}
-            className="rounded border px-3 py-1 hover:bg-eikon-panel"
+            className="rounded border border-white/40 px-3 py-1 text-white hover:bg-white/10"
           >
             Sign out
           </button>
         </div>
       </header>
 
+      {/* Tab navigation */}
       <nav className="flex gap-6 border-b px-6">
         {TABS.map((t) => {
           const active = pathname === t.href;
@@ -61,7 +72,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link
               key={t.href}
               href={t.href}
-              className={`border-b-2 py-3 text-sm font-medium ${
+              className={`border-b-2 py-3 text-sm font-medium transition-colors ${
                 active
                   ? "border-eikon-navy text-eikon-navy"
                   : "border-transparent text-eikon-muted hover:text-eikon-navy"

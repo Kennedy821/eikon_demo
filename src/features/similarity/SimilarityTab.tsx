@@ -95,7 +95,7 @@ export function SimilarityTab() {
           <button
             onClick={() => sim.mutate()}
             disabled={sim.isPending}
-            className="w-full rounded bg-eikon-navy px-4 py-2 text-white disabled:opacity-50"
+            className="w-full rounded bg-eikon-orange px-4 py-2 text-white disabled:opacity-50"
           >
             {sim.isPending ? "Calculating…" : "Compare locations"}
           </button>
@@ -158,7 +158,7 @@ function ScoreCard({
       <div className={`text-sm font-medium ${color}`}>{label}</div>
       <div className="h-2 w-full overflow-hidden rounded bg-white">
         <div
-          className="h-full bg-eikon-navy"
+          className="h-full bg-eikon-orange"
           style={{ width: `${Math.min(Math.max(score, 0), 1) * 100}%` }}
         />
       </div>
