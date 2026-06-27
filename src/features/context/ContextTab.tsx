@@ -42,7 +42,7 @@ export function ContextTab() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-eikon-navy">Location Context</h1>
+        <h1 className="text-2xl font-bold text-eikon-midnight">Location Context</h1>
         <p className="text-sm text-eikon-muted">
           Get detailed descriptions of any location using AI-powered geospatial analysis.
         </p>
@@ -51,7 +51,7 @@ export function ContextTab() {
       <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
         {/* ---- Left: location input ---- */}
         <div className="space-y-3 rounded-lg border p-4">
-          <h2 className="text-sm font-semibold text-eikon-navy">Location input</h2>
+          <h2 className="text-sm font-semibold text-eikon-midnight">Location input</h2>
           <label className="block text-sm">
             <span className="mb-1 block text-eikon-muted">Latitude</span>
             <input
@@ -111,17 +111,17 @@ export function ContextTab() {
 
               <div className="space-y-1 text-sm">
                 <p>
-                  <span className="font-semibold text-eikon-navy">Coordinates:</span>{" "}
+                  <span className="font-semibold text-eikon-midnight">Coordinates:</span>{" "}
                   {latN.toFixed(6)}, {lonN.toFixed(6)}
                 </p>
                 <p>
-                  <span className="font-semibold text-eikon-navy">Resolution:</span>{" "}
+                  <span className="font-semibold text-eikon-midnight">Resolution:</span>{" "}
                   {resolution.toUpperCase()}
                 </p>
               </div>
 
               <div>
-                <h3 className="mb-1 font-semibold text-eikon-navy">Location Description</h3>
+                <h3 className="mb-1 font-semibold text-eikon-midnight">Location Description</h3>
                 <p className="whitespace-pre-wrap rounded bg-eikon-panel p-3 text-sm">
                   {ctx.data.description ?? "No description available."}
                 </p>
@@ -129,7 +129,7 @@ export function ContextTab() {
 
               {ctx.data.image && (
                 <div>
-                  <h3 className="mb-1 font-semibold text-eikon-navy">Location Image</h3>
+                  <h3 className="mb-1 font-semibold text-eikon-midnight">Location Image</h3>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`data:image/png;base64,${ctx.data.image}`}

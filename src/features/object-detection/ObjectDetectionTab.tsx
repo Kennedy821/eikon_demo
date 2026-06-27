@@ -73,7 +73,7 @@ export function ObjectDetectionTab() {
       {/* ---- Input column ---- */}
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-bold text-eikon-navy">Object Detection</h1>
+          <h1 className="text-2xl font-bold text-eikon-midnight">Object Detection</h1>
           <p className="text-sm text-eikon-muted">
             Detect objects in aerial imagery using YOLO-based computer vision.
           </p>
@@ -139,7 +139,7 @@ export function ObjectDetectionTab() {
         <div className="rounded border">
           <button
             onClick={() => setShowClasses((s) => !s)}
-            className="w-full px-3 py-2 text-left text-sm font-medium text-eikon-navy"
+            className="w-full px-3 py-2 text-left text-sm font-medium text-eikon-midnight"
           >
             {showClasses ? "▾" : "▸"} View Detectable Object Classes
           </button>
@@ -155,7 +155,7 @@ export function ObjectDetectionTab() {
 
       {/* ---- Results column ---- */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-eikon-navy">Detection Results</h2>
+        <h2 className="text-lg font-semibold text-eikon-midnight">Detection Results</h2>
 
         {det.error && (
           <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -205,7 +205,7 @@ function DetectionResults({
             onClick={() => onView(v)}
             className={`border-b-2 px-3 py-2 text-sm font-medium ${
               view === v
-                ? "border-eikon-navy text-eikon-navy"
+                ? "border-eikon-navy text-eikon-navy font-bold"
                 : "border-transparent text-eikon-muted hover:text-eikon-navy"
             }`}
           >
@@ -242,7 +242,7 @@ function DetectionChart({ records }: { records: ObjectRecord[] }) {
 
       {pieData.length > 0 && (
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-eikon-navy">
+          <h3 className="mb-2 text-sm font-semibold text-eikon-midnight">
             Area Coverage Distribution
           </h3>
           <ResponsiveContainer width="100%" height={320}>
@@ -265,7 +265,7 @@ function DetectionImage({ data }: { data: DetectionResponse }) {
   if (data.annotatedImage) {
     return (
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-eikon-navy">Annotated Location Image</h3>
+        <h3 className="mb-2 text-sm font-semibold text-eikon-midnight">Annotated Location Image</h3>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={`data:image/png;base64,${data.annotatedImage}`}
@@ -326,7 +326,7 @@ function DetectionTable({ records }: { records: ObjectRecord[] }) {
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
-          <thead className="bg-eikon-panel text-left text-eikon-navy">
+          <thead className="bg-eikon-panel text-left text-eikon-midnight">
             <tr>
               <th className="px-3 py-2">Object</th>
               <th className="px-3 py-2">Count</th>
@@ -345,10 +345,10 @@ function DetectionTable({ records }: { records: ObjectRecord[] }) {
         </table>
       </div>
       <div className="flex gap-2">
-        <button onClick={() => download("csv")} className="rounded border px-4 py-2 text-sm text-eikon-navy">
+        <button onClick={() => download("csv")} className="rounded border px-4 py-2 text-sm text-eikon-midnight">
           Download CSV
         </button>
-        <button onClick={() => download("json")} className="rounded border px-4 py-2 text-sm text-eikon-navy">
+        <button onClick={() => download("json")} className="rounded border px-4 py-2 text-sm text-eikon-midnight">
           Download JSON
         </button>
       </div>
@@ -362,10 +362,10 @@ function ExampleLocations() {
       <p className="text-sm text-eikon-muted">
         Enter coordinates or a location ID and click &quot;Detect Objects&quot;.
       </p>
-      <h3 className="text-sm font-semibold text-eikon-navy">Example Locations</h3>
+      <h3 className="text-sm font-semibold text-eikon-midnight">Example Locations</h3>
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
-          <thead className="bg-eikon-panel text-left text-eikon-navy">
+          <thead className="bg-eikon-panel text-left text-eikon-midnight">
             <tr>
               <th className="px-3 py-2">Name</th>
               <th className="px-3 py-2">Latitude</th>
@@ -393,7 +393,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border bg-eikon-panel p-3 text-center">
       <div className="text-xs uppercase tracking-wide text-eikon-muted">{label}</div>
-      <div className="mt-1 text-2xl font-bold text-eikon-navy">{value}</div>
+      <div className="mt-1 text-2xl font-bold text-eikon-midnight">{value}</div>
     </div>
   );
 }

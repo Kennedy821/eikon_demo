@@ -8,7 +8,7 @@
 export function DocsView({ content }: { content: string }) {
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-eikon-navy">SDK Documentation</h1>
+      <h1 className="text-2xl font-bold text-eikon-midnight">SDK Documentation</h1>
       <pre className="whitespace-pre-wrap rounded-lg border bg-eikon-panel p-4 text-sm leading-relaxed text-gray-800">
         {content}
       </pre>

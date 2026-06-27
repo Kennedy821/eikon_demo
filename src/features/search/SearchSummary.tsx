@@ -22,7 +22,7 @@ export function SearchSummary({ results }: { results: SearchResult[] }) {
 
       {hasEval && (
         <div className="space-y-2 text-sm">
-          <h3 className="font-semibold text-eikon-navy">AI Model Evaluation Details</h3>
+          <h3 className="font-semibold text-eikon-midnight">AI Model Evaluation Details</h3>
           <p>
             <strong>Recommended:</strong> {recommended.length} locations (green on map)
           </p>
@@ -32,7 +32,7 @@ export function SearchSummary({ results }: { results: SearchResult[] }) {
 
           {(sampleRec || sampleNot) && (
             <div className="space-y-2 border-t border-green-200 pt-2">
-              <p className="font-medium text-eikon-navy">Sample AI reasoning</p>
+              <p className="font-medium text-eikon-midnight">Sample AI reasoning</p>
               {sampleRec && (
                 <p className="text-xs text-eikon-muted">
                   <em>Recommended:</em>{" "}

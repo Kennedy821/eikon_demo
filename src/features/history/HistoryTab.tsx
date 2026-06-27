@@ -20,7 +20,7 @@ export function HistoryTab() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-eikon-navy">Search History</h1>
+      <h1 className="text-2xl font-bold text-eikon-midnight">Search History</h1>
 
       <button
         onClick={() => load.mutate()}
@@ -53,7 +53,7 @@ function SearchBlock({ index, search }: { index: number; search: PreviousSearch 
     <div className="rounded-lg border">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between px-4 py-2 text-left font-medium text-eikon-navy"
+        className="flex w-full items-center justify-between px-4 py-2 text-left font-medium text-eikon-midnight"
       >
         <span>
           Search {index + 1} — {search.rows.length} result(s)
@@ -63,7 +63,7 @@ function SearchBlock({ index, search }: { index: number; search: PreviousSearch 
       {open && (
         <div className="overflow-x-auto border-t">
           <table className="w-full text-sm">
-            <thead className="bg-eikon-panel text-left text-eikon-navy">
+            <thead className="bg-eikon-panel text-left text-eikon-midnight">
               <tr>
                 {search.columns.map((c) => (
                   <th key={c} className="px-3 py-2">

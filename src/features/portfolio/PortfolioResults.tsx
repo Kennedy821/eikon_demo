@@ -62,7 +62,7 @@ export function PortfolioResults({
             onClick={() => onView(v)}
             className={`border-b-2 px-3 py-2 text-sm font-medium ${
               view === v
-                ? "border-eikon-navy text-eikon-navy"
+                ? "border-eikon-navy text-eikon-navy font-bold"
                 : "border-transparent text-eikon-muted hover:text-eikon-navy"
             }`}
           >
@@ -171,7 +171,7 @@ function PortfolioTable({ rows }: { rows: MergedRow[] }) {
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
-          <thead className="bg-eikon-panel text-left text-eikon-navy">
+          <thead className="bg-eikon-panel text-left text-eikon-midnight">
             <tr>
               <th className="px-3 py-2">orig</th>
               <th className="px-3 py-2">dest</th>
@@ -190,10 +190,10 @@ function PortfolioTable({ rows }: { rows: MergedRow[] }) {
         </table>
       </div>
       <div className="flex gap-2">
-        <button onClick={() => download("csv")} className="rounded border px-4 py-2 text-sm text-eikon-navy">
+        <button onClick={() => download("csv")} className="rounded border px-4 py-2 text-sm text-eikon-midnight">
           Download CSV
         </button>
-        <button onClick={() => download("json")} className="rounded border px-4 py-2 text-sm text-eikon-navy">
+        <button onClick={() => download("json")} className="rounded border px-4 py-2 text-sm text-eikon-midnight">
           Download JSON
         </button>
       </div>
@@ -205,7 +205,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border bg-eikon-panel p-3 text-center">
       <div className="text-xs uppercase tracking-wide text-eikon-muted">{label}</div>
-      <div className="mt-1 text-2xl font-bold text-eikon-navy">{value}</div>
+      <div className="mt-1 text-2xl font-bold text-eikon-midnight">{value}</div>
     </div>
   );
 }

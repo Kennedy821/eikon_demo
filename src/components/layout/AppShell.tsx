@@ -35,15 +35,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen">
-      {/* Teal header bar */}
-      <header className="flex items-center justify-between bg-eikon-navy px-6 py-3 shadow-sm">
+      {/* Header — midnight blue so the dark-background logo blends naturally */}
+      <header className="flex items-center justify-between bg-black px-6 py-3 shadow-sm">
         <div className="flex items-center gap-3">
           <Image
-            src="/project_infinite_logo.png"
+            src="/eikon_logo.png"
             alt="EIKON logo"
-            width={32}
-            height={32}
-            className="rounded"
+            width={40}
+            height={40}
+            className="rounded-full"
           />
           <span className="text-2xl font-bold tracking-tight text-white">EIKON</span>
         </div>
@@ -74,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               href={t.href}
               className={`border-b-2 py-3 text-sm font-medium transition-colors ${
                 active
-                  ? "border-eikon-navy text-eikon-navy"
+                  ? "border-eikon-navy text-eikon-navy font-bold"
                   : "border-transparent text-eikon-muted hover:text-eikon-navy"
               }`}
             >

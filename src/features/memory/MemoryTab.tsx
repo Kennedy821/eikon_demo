@@ -37,7 +37,7 @@ export function MemoryTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-eikon-navy">EIKON Memory</h1>
+        <h1 className="text-2xl font-bold text-eikon-midnight">EIKON Memory</h1>
         <p className="text-sm text-eikon-muted">
           What EIKON remembers about you across conversations. You can delete any snippet.
         </p>
@@ -54,7 +54,7 @@ export function MemoryTab() {
         <>
           {memory.data.reflection && (
             <section className="rounded-lg border p-4">
-              <h2 className="font-semibold text-eikon-navy">User Profile</h2>
+              <h2 className="font-semibold text-eikon-midnight">User Profile</h2>
               <p className="text-xs text-eikon-muted">
                 Last updated: {memory.data.reflection.created_at.slice(0, 10)} (v
                 {memory.data.reflection.version})
@@ -80,7 +80,7 @@ export function MemoryTab() {
           </div>
 
           <section>
-            <h2 className="mb-2 font-semibold text-eikon-navy">
+            <h2 className="mb-2 font-semibold text-eikon-midnight">
               Memory Snippets ({memory.data.snippets.length})
             </h2>
             {memory.data.snippets.length === 0 ? (
@@ -95,7 +95,7 @@ export function MemoryTab() {
                     className="flex items-start justify-between gap-3 rounded border p-3"
                   >
                     <div className="text-sm">
-                      <span className="mr-2 rounded bg-eikon-panel px-1.5 py-0.5 text-xs font-semibold text-eikon-navy">
+                      <span className="mr-2 rounded bg-eikon-panel px-1.5 py-0.5 text-xs font-semibold text-eikon-midnight">
                         {TYPE_LABEL[s.type] ?? "?"}
                       </span>
                       {s.content}
