@@ -96,6 +96,7 @@ export interface ChatMessage {
   role: ChatRole;
   content: string;
   images?: string[]; // base64
+  responseTimeMs?: number; // assistant only — wall-clock ms from send to response
 }
 
 export interface ReasoningTrace {

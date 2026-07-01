@@ -15,32 +15,35 @@ import type { ChatMessage } from "@/lib/types";
 
 const POLL_TIMEOUT_MS = 40 * 60 * 1000; // 40 min, matches the Python max_wait.
 
-/**
- * Chat lifecycle — ports send_chat_message():
- *   submit -> poll status until completed, polling reasoning traces alongside.
- * Maintains model_cot_history and conversation_history exactly as the app did,
- * but with React state instead of st.session_state + reruns.
- */
 export function useChat() {
   const { apiKey } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  // Activity timeline: each trace as { label, text }, with consecutive exact
-  // duplicates suppressed. Drives the live "thinking" view.
   const [steps, setSteps] = useState<TraceStep[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Histories kept across turns (last-10 windows are applied server-side).
   const modelCotHistory = useRef<string[]>([]);
   const conversationHistory = useRef<string[]>([]);
+
+  // Cancellation: cancelRef breaks the poll loop; wakeRef unblocks the current sleep.
+  const cancelRef = useRef(false);
+  const wakeRef = useRef<(() => void) | null>(null);
+
+  const cancel = useCallback(() => {
+    cancelRef.current = true;
+    wakeRef.current?.();
+  }, []);
 
   const send = useCallback(
     async (message: string) => {
       if (!apiKey || !message.trim() || isThinking) return;
+      cancelRef.current = false;
+      wakeRef.current = null;
       setError(null);
       setSteps([]);
       setMessages((m) => [...m, { role: "user", content: message }]);
       setIsThinking(true);
+      const startMs = Date.now();
 
       try {
         const { jobId } = await submitChat({
@@ -54,11 +57,16 @@ export function useChat() {
         let sinceIndex = 0;
 
         while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, POLL.searchStatus));
+          if (cancelRef.current) break;
 
-          // Reasoning traces (best-effort, like the Python loop). Append each
-          // new trace as a { label, summary } step, skipping empties and exact
-          // consecutive duplicates so the timeline stays clean.
+          // Abortable sleep: resolves early if cancel() fires wakeRef.
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, POLL.searchStatus);
+            wakeRef.current = () => { clearTimeout(timer); resolve(); };
+          });
+
+          if (cancelRef.current) break;
+
           try {
             const t = await getChatTraces(apiKey, sinceIndex);
             if (t.traces.length > 0) {
@@ -66,7 +74,7 @@ export function useChat() {
               setSteps((prev) => {
                 const next = [...prev];
                 for (const tr of t.traces) {
-                  if (isHiddenTrace(tr)) continue; // never surface "Reflecting"
+                  if (isHiddenTrace(tr)) continue;
                   const step = traceStep(tr);
                   if (!step.text) continue;
                   const last = next[next.length - 1];
@@ -79,6 +87,8 @@ export function useChat() {
           } catch {
             /* ignore trace failures */
           }
+
+          if (cancelRef.current) break;
 
           const status = await getChatStatus(jobId);
           if (status.status === "completed") {
@@ -96,6 +106,7 @@ export function useChat() {
                 role: "assistant",
                 content: clean,
                 images: status.result?.map_bytes ?? [],
+                responseTimeMs: Date.now() - startMs,
               },
             ]);
             setIsThinking(false);
@@ -106,8 +117,21 @@ export function useChat() {
             throw new Error(status.error ?? "Chat processing failed");
           }
         }
+
+        // Cancelled — clean exit, no error shown.
+        if (cancelRef.current) {
+          setIsThinking(false);
+          setSteps([]);
+          return;
+        }
+
         throw new Error("Chat request timed out.");
       } catch (err) {
+        if (cancelRef.current) {
+          setIsThinking(false);
+          setSteps([]);
+          return;
+        }
         setError(err instanceof Error ? err.message : "Chat error");
         setIsThinking(false);
       }
@@ -115,5 +139,5 @@ export function useChat() {
     [apiKey, isThinking],
   );
 
-  return { messages, steps, isThinking, error, send };
+  return { messages, steps, isThinking, error, send, cancel };
 }

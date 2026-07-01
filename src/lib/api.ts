@@ -215,3 +215,34 @@ export async function deleteSnippet(apiKey: string, snippetId: string) {
   if (!res.ok) throw new Error((data as { error?: string }).error ?? res.statusText);
   return data as { ok: boolean };
 }
+
+export type VoiceName = "Peach" | "Heart" | "Fable";
+
+function normalizeTtsText(raw: string): string {
+  return raw
+    .replace(/[•·▪◦–—―]/g, " ")
+    .replace(/[""]/g, '"')
+    .replace(/['']/g, "'")
+    .replace(/…/g, "...")
+    .replace(/&/g, " and ")
+    .replace(/[/\\]/g, " ")
+    .replace(/\n|\r|\t/g, " ")
+    .replace(/[^A-Za-z0-9\s.,!?'"]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Synthesize speech via the TTS proxy. Returns a revocable blob URL. */
+export async function synthesizeSpeech(text: string, voice: VoiceName = "Heart"): Promise<string> {
+  const res = await fetch("/api/eikon/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: normalizeTtsText(text), voice }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? "TTS failed");
+  const { audioBase64 } = data as { audioBase64: string };
+  const bytes = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
+  const blob = new Blob([bytes], { type: "audio/wav" });
+  return URL.createObjectURL(blob);
+}

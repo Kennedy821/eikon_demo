@@ -23,6 +23,8 @@ export const NGROK_BASE =
   process.env.EIKON_NGROK_BASE_URL ?? "https://slugai.eikon.ngrok.app";
 export const PAGEKITE_BASE =
   process.env.EIKON_PAGEKITE_BASE_URL ?? "https://slugai.pagekite.me";
+export const GILGAMESH_BASE =
+  process.env.EIKON_GILGAMESH_BASE_URL ?? "https://slugai.gilgamesh.ngrok.app";
 
 export interface BackendCall {
   base: string;
@@ -84,8 +86,9 @@ export const BACKEND = {
   },
   safestRoute: { base: NGROK_BASE, path: "/eikon_safest_route_pathfinder", method: "POST" },
 
-  // ---- voice (ngrok) ----
+  // ---- voice ----
   tts: { base: NGROK_BASE, path: "/eikon_tts", method: "POST" },
+  kokoroTts: { base: GILGAMESH_BASE, path: "/kokoro_tts", method: "POST" },
 } as const satisfies Record<string, BackendCall>;
 
 export type BackendKey = keyof typeof BACKEND;
