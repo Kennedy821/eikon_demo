@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@/hooks/useChat";
+import { synthesizeSpeech, type VoiceName } from "@/lib/api";
 import type { TraceStep } from "@/lib/chatFormat";
 
 /**
@@ -19,10 +20,43 @@ const SUGGESTIONS = [
   "What objects are at 51.5074, -0.1278?",
 ];
 
+type TtsState = "idle" | "loading" | "playing";
+
 export function ChatTab() {
-  const { messages, steps, isThinking, error, send } = useChat();
+  const { messages, steps, isThinking, error, send, cancel } = useChat();
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
+  const [ttsIndex, setTtsIndex] = useState<number | null>(null);
+  const [ttsState, setTtsState] = useState<TtsState>("idle");
+  const [voice, setVoice] = useState<VoiceName>("Heart");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  function stopAudio() {
+    audioRef.current?.pause();
+    if (audioRef.current?.src) URL.revokeObjectURL(audioRef.current.src);
+    audioRef.current = null;
+    setTtsIndex(null);
+    setTtsState("idle");
+  }
+
+  async function speak(index: number, text: string) {
+    if (ttsIndex === index) { stopAudio(); return; }
+    stopAudio();
+    setTtsIndex(index);
+    setTtsState("loading");
+    try {
+      const blobUrl = await synthesizeSpeech(text, voice);
+      const audio = new Audio(blobUrl);
+      audioRef.current = audio;
+      audio.onended = stopAudio;
+      audio.onerror = stopAudio;
+      setTtsState("playing");
+      audio.play();
+    } catch {
+      setTtsState("idle");
+      setTtsIndex(null);
+    }
+  }
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -48,7 +82,15 @@ export function ChatTab() {
         ) : (
           <div className="mx-auto w-full max-w-5xl space-y-6 p-6">
             {messages.map((m, i) => (
-              <Message key={i} role={m.role} content={m.content} images={m.images} />
+              <Message
+                key={i}
+                role={m.role}
+                content={m.content}
+                images={m.images}
+                responseTimeMs={m.responseTimeMs}
+                ttsState={ttsIndex === i ? ttsState : "idle"}
+                onSpeak={m.role === "assistant" && m.content ? () => speak(i, m.content) : undefined}
+              />
             ))}
 
             {isThinking && <Thinking steps={steps} />}
@@ -61,12 +103,30 @@ export function ChatTab() {
       </div>
 
       {/* Composer */}
+      <div className="mx-auto mt-4 w-full max-w-5xl space-y-2">
+        <div className="flex items-center gap-2 text-xs text-eikon-muted">
+          <span>Voice</span>
+          {(["Heart", "Fable", "Peach"] as VoiceName[]).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setVoice(v)}
+              className={`rounded-full border px-2.5 py-0.5 transition-colors ${
+                voice === v
+                  ? "border-eikon-navy bg-eikon-navy text-white"
+                  : "border-transparent bg-eikon-panel text-eikon-muted hover:text-eikon-midnight"
+              }`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           submit(input);
         }}
-        className="mx-auto mt-4 flex w-full max-w-5xl gap-2"
+        className="flex gap-2"
       >
         <input
           value={input}
@@ -75,34 +135,66 @@ export function ChatTab() {
           disabled={isThinking}
           className="flex-1 rounded-lg border px-4 py-3 disabled:opacity-50"
         />
-        <button
-          type="submit"
-          disabled={isThinking || !input.trim()}
-          className="rounded-lg bg-eikon-orange px-6 py-3 font-medium text-white disabled:opacity-50"
-        >
-          Send
-        </button>
+        {isThinking ? (
+          <button
+            type="button"
+            onClick={cancel}
+            className="rounded-lg border border-red-300 bg-red-50 px-6 py-3 font-medium text-red-700 hover:bg-red-100"
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="rounded-lg bg-eikon-orange px-6 py-3 font-medium text-white disabled:opacity-50"
+          >
+            Send
+          </button>
+        )}
       </form>
+      </div>
     </div>
   );
+}
+
+function formatDuration(ms: number): string {
+  const totalSecs = Math.round(ms / 1000);
+  const mins = Math.floor(totalSecs / 60);
+  const secs = totalSecs % 60;
+  if (mins === 0) return `${secs}s`;
+  return `${mins}m ${secs}s`;
 }
 
 function Message({
   role,
   content,
   images,
+  ttsState = "idle",
+  onSpeak,
+  responseTimeMs,
 }: {
   role: "user" | "assistant";
   content: string;
   images?: string[];
+  ttsState?: TtsState;
+  onSpeak?: () => void;
+  responseTimeMs?: number;
 }) {
   const isUser = role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div className={isUser ? "max-w-[75%]" : "w-full max-w-3xl"}>
         {!isUser && (
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-eikon-muted">
-            EIKON
+          <div className="mb-1 flex items-baseline gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-eikon-muted">
+              EIKON
+            </span>
+            {responseTimeMs !== undefined && (
+              <span className="text-xs text-eikon-muted">
+                Reasoning time: {formatDuration(responseTimeMs)}
+              </span>
+            )}
           </div>
         )}
         {content && (
@@ -115,8 +207,47 @@ function Message({
           </div>
         )}
         {images && images.length > 0 && <ImageGrid images={images} />}
+        {onSpeak && (
+          <button
+            onClick={onSpeak}
+            title={ttsState === "playing" ? "Stop" : "Listen"}
+            className="mt-1.5 flex items-center gap-1.5 rounded px-2 py-1 text-xs text-eikon-muted transition-colors hover:bg-eikon-panel hover:text-eikon-midnight"
+          >
+            {ttsState === "loading" && <Spinner />}
+            {ttsState === "playing" && <StopIcon />}
+            {ttsState === "idle" && <SpeakerIcon />}
+            <span>{ttsState === "loading" ? "Synthesising…" : ttsState === "playing" ? "Stop" : "Listen"}</span>
+          </button>
+        )}
       </div>
     </div>
+  );
+}
+
+function SpeakerIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" width="13" height="13" aria-hidden>
+      <path d="M9 2.5a.5.5 0 00-.8-.4L4.5 5H2a1 1 0 00-1 1v4a1 1 0 001 1h2.5l3.7 2.9a.5.5 0 00.8-.4V2.5z"/>
+      <path d="M11.3 5.7a1 1 0 011.4 1.4 3 3 0 010 1.8 1 1 0 01-1.4-1.4.5.5 0 000-.4 1 1 0 010-1.4z" opacity=".6"/>
+      <path d="M13.1 3.9a1 1 0 011.4 1.4 6 6 0 010 5.4 1 1 0 01-1.4-1.4 4 4 0 000-2.6 1 1 0 010-2.8z" opacity=".3"/>
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" width="13" height="13" aria-hidden>
+      <rect x="3" y="3" width="10" height="10" rx="1.5"/>
+    </svg>
+  );
+}
+
+function Spinner() {
+  return (
+    <span
+      className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-eikon-muted border-t-eikon-midnight"
+      aria-hidden
+    />
   );
 }
 
