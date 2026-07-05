@@ -30,9 +30,10 @@ export type EndpointKey = keyof typeof ENDPOINTS;
 
 /** Poll intervals (ms) — replaces Streamlit's time.sleep + st.rerun loops. */
 export const POLL = {
-  searchStatus: 2000,
-  /** Stage-progress checkpoint poll (Streamlit used 10s). */
-  searchProgress: 8000,
+  // 5s: fast enough to catch completion promptly, not so aggressive it
+  // hammers the backend during a 10-minute moderate/exhaustive run.
+  searchStatus: 5000,
+  searchProgress: 10_000,
   chatTraces: 1500,
   corridorAssessment: 3000,
 } as const;
