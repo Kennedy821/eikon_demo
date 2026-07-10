@@ -35,56 +35,62 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen">
-      {/* Header — midnight blue so the dark-background logo blends naturally */}
-      <header className="flex items-center justify-between bg-black px-6 py-3 shadow-sm">
-        <div className="flex items-center gap-3">
+      {/* Header — black so the dark-background logo blends naturally */}
+      <header className="flex items-center justify-between gap-2 bg-black px-4 py-3 shadow-sm sm:px-6">
+        <div className="flex items-center gap-2 sm:gap-3">
           <Image
             src="/eikon_logo.png"
             alt="EIKON logo"
             width={40}
             height={40}
-            className="rounded-full"
+            className="h-8 w-8 rounded-full sm:h-10 sm:w-10"
           />
-          <span className="text-2xl font-bold tracking-tight text-white">EIKON</span>
+          <span className="text-xl font-bold tracking-tight text-white sm:text-2xl">EIKON</span>
         </div>
-        <div className="flex items-center gap-4 text-sm text-white/80">
+        <div className="flex items-center gap-2 text-sm text-white/80 sm:gap-4">
           <span
-            className="rounded-full bg-white/20 px-3 py-1 font-medium text-white"
+            className="whitespace-nowrap rounded-full bg-white/20 px-3 py-1 font-medium text-white"
             title="API credit balance (GBP)"
           >
             £{formatCredits(credits?.balance)}
           </span>
-          <span>{userEmail}</span>
+          {/* Email is the widest element — drop it on phones to save space. */}
+          <span className="hidden truncate md:inline">{userEmail}</span>
           <button
             onClick={logout}
-            className="rounded border border-white/40 px-3 py-1 text-white hover:bg-white/10"
+            className="whitespace-nowrap rounded border border-white/40 px-3 py-1 text-white hover:bg-white/10"
           >
             Sign out
           </button>
         </div>
       </header>
 
-      {/* Tab navigation */}
-      <nav className="flex gap-6 border-b px-6">
-        {TABS.map((t) => {
-          const active = pathname === t.href;
-          return (
-            <Link
-              key={t.href}
-              href={t.href}
-              className={`border-b-2 py-3 text-sm font-medium transition-colors ${
-                active
-                  ? "border-eikon-navy text-eikon-navy font-bold"
-                  : "border-transparent text-eikon-muted hover:text-eikon-navy"
-              }`}
-            >
-              {t.label}
-            </Link>
-          );
-        })}
-      </nav>
+      {/* Tab navigation — horizontal-scroll strip on mobile so all tabs stay
+          reachable via swipe; a right-edge fade hints there's more to scroll. */}
+      <div className="relative border-b">
+        <nav className="scrollbar-hide flex gap-6 overflow-x-auto whitespace-nowrap px-4 sm:px-6">
+          {TABS.map((t) => {
+            const active = pathname === t.href;
+            return (
+              <Link
+                key={t.href}
+                href={t.href}
+                className={`shrink-0 border-b-2 py-3 text-sm font-medium transition-colors ${
+                  active
+                    ? "border-eikon-navy text-eikon-navy font-bold"
+                    : "border-transparent text-eikon-muted hover:text-eikon-navy"
+                }`}
+              >
+                {t.label}
+              </Link>
+            );
+          })}
+        </nav>
+        {/* Fade cue at the right edge (mobile only). */}
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white to-transparent sm:hidden" />
+      </div>
 
-      <main className="p-6">{children}</main>
+      <main className="p-4 sm:p-6">{children}</main>
     </div>
   );
 }

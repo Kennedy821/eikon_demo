@@ -18,3 +18,12 @@ body {
   @apply bg-white text-gray-900 antialiased;
   font-family: var(--font-inter), "Helvetica Neue", Arial, sans-serif;
 }
+
+/* Horizontal-scroll tab strip: hide the scrollbar but keep scrollability. */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE / Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome / Safari */
+}
