@@ -84,14 +84,25 @@ export function useSearchJob() {
     retry: false,
   });
 
-  // Compute stage, but fall back to the last known good stage rather than
-  // STAGES[0] when the progress poll is temporarily unavailable.
+  // Compute stage. The progress bar is strictly monotonic — it can only move
+  // forward or hold, never rewind. This matters because when the backend job
+  // finishes, the progress endpoint returns job_complete=true with an EMPTY
+  // latest_ckpt; stageFromCheckpoint("") would otherwise fall through to
+  // Stage 0 during the window where results are still transiting to the
+  // browser (isComplete stays false until the status payload lands), making a
+  // successful search look like it restarted.
   let stage: StageInfo;
-  if (isComplete) {
+  if (isComplete || progress.data?.jobComplete) {
+    // Backend is done — pin to the final stage even while results transit.
     stage = STAGES[STAGES.length - 1];
-  } else if (progress.data) {
-    stage = stageFromCheckpoint(progress.data.latestCkpt);
     lastStageRef.current = stage;
+  } else if (progress.data?.latestCkpt) {
+    const next = stageFromCheckpoint(progress.data.latestCkpt);
+    // Only advance; ignore any lower/empty checkpoint so the bar never rewinds.
+    if (next.progress >= lastStageRef.current.progress) {
+      lastStageRef.current = next;
+    }
+    stage = lastStageRef.current;
   } else {
     stage = lastStageRef.current;
   }
