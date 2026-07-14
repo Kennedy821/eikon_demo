@@ -5,49 +5,32 @@ import { callBackend, BackendError } from "@/lib/server/backend";
  * POST /api/eikon/history  { apiKey, numSearches? }  ->
  *   { searches: Array<{ columns: string[]; rows: Record<string, unknown>[] }> }
  *
- * Mirrors eikonsai.utils.get_previous_search_api_results + fetch_previous_searches:
+ * Mirrors eikonsai.utils.get_previous_search_api_results:
  *   POST ngrok /get_latest_results_for_eikon_search_agent_api_job_web_many
  *   { api_key, num_searches }  -> { latest_search_results: "<json>|<json>|..." }
  *
- * The server joins JSON-encoded DataFrame dicts with "|", but a "|" inside a
- * JSON value shatters a naive split. So we scan for balanced JSON objects
- * instead (the JS equivalent of the Python raw_decode approach). Cap is 5.
+ * The server joins one pandas .to_json() (column-oriented) per search with
+ * "|". The SDK simply does `str.split("|")` and parses each fragment — that is
+ * the proven-correct behaviour, so we do exactly the same, running each
+ * fragment through a real JSON parser. A previous hand-rolled balanced-brace
+ * scanner could desync on real to_json output and shift user_search_query onto
+ * the wrong search block. Cap is 5.
  */
 
-/** Extract top-level balanced {...} JSON objects from a string, ignoring "|". */
-function extractJsonObjects(s: string): Record<string, Record<string, unknown>>[] {
-  const objects: Record<string, Record<string, unknown>>[] = [];
-  let depth = 0;
-  let start = -1;
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (ch === "\\") escaped = true;
-      else if (ch === '"') inString = false;
-      continue;
-    }
-    if (ch === '"') {
-      inString = true;
-    } else if (ch === "{") {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (ch === "}") {
-      depth--;
-      if (depth === 0 && start >= 0) {
-        try {
-          objects.push(JSON.parse(s.slice(start, i + 1)));
-        } catch {
-          /* skip malformed fragment */
-        }
-        start = -1;
+/** Split the "|"-joined payload into per-search JSON objects, exactly as the SDK does. */
+function splitSearchObjects(s: string): Record<string, Record<string, unknown>>[] {
+  return s
+    .split("|")
+    .map((fragment) => fragment.trim())
+    .filter(Boolean)
+    .map((fragment) => {
+      try {
+        return JSON.parse(fragment) as Record<string, Record<string, unknown>>;
+      } catch {
+        return null; // skip a malformed fragment rather than shift alignment
       }
-    }
-  }
-  return objects;
+    })
+    .filter((o): o is Record<string, Record<string, unknown>> => o !== null);
 }
 
 function columnsToRows(parsed: Record<string, Record<string, unknown>>): {
@@ -83,7 +66,7 @@ export async function POST(req: NextRequest) {
     const raw = data?.latest_search_results ?? "";
     // Hide heavy columns, like the Streamlit history view does.
     const HIDE = new Set(["objects_detected", "ai_rationale"]);
-    const searches = extractJsonObjects(raw).map((obj) => {
+    const searches = splitSearchObjects(raw).map((obj) => {
       const { columns, rows } = columnsToRows(obj);
       const visible = columns.filter((c) => !HIDE.has(c));
       return { columns: visible.length ? visible : columns, rows };
