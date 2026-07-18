@@ -53,10 +53,9 @@ export const BACKEND = {
   locationDescription: { base: NGROK_BASE, path: "/get_location_description", method: "POST" },
   locationImage: { base: NGROK_BASE, path: "/get_location_image", method: "POST" },
 
-  // ---- similarity (pagekite, via eikonsai.similarity) ----
-  visualSimilarity: { base: NGROK_BASE, path: "/get_similarity_image", method: "POST" },
-  descriptiveSimilarity: { base: NGROK_BASE, path: "/get_similarity_descriptive", method: "POST" },
-  combinedSimilarity: { base: NGROK_BASE, path: "/get_combined_location_similarity", method: "POST" },
+  // ---- similarity (unified endpoint; similarity_type in the payload selects
+  //      visual / descriptive / combined / latent / holistic / mm) ----
+  abstractedSimilarity: { base: NGROK_BASE, path: "/abstracted_similarity_comparison", method: "POST" },
 
   // ---- object detection (ngrok) ----
   objectsDetected: { base: NGROK_BASE, path: "/get_objects_detected_in_location", method: "POST" },
