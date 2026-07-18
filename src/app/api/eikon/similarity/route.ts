@@ -1,27 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callBackend, BackendError, type BackendKey } from "@/lib/server/backend";
+import { callBackend, BackendError } from "@/lib/server/backend";
 
 /**
  * POST /api/eikon/similarity
  *   { location1:[lat,lon], location2:[lat,lon], resolution, apiKey, type? }
  *   -> { visual?, descriptive?, combined? }
  *
- * Mirrors eikonsai.similarity.{visual,descriptive,combined}_similarity
- * (POST pagekite /get_similarity_image, /get_similarity_descriptive,
- *  /get_combined_location_similarity).
+ * Backed by the unified POST /abstracted_similarity_comparison endpoint:
+ *   { location_1_lat_lon_list, location_2_lat_lon_list, resolution,
+ *     similarity_type, api_key, text }
+ * Every similarity_type returns { location_pair_similarity_value }.
  * `type` selects which to compute; omit/"all" computes all three in parallel.
  */
 
-const SIM_ENDPOINTS = {
-  visual: { key: "visualSimilarity" as BackendKey, field: "location_pair_similarity_value" },
-  descriptive: {
-    key: "descriptiveSimilarity" as BackendKey,
-    field: "location_pair_descriptive_similarity_value",
-  },
-  combined: { key: "combinedSimilarity" as BackendKey, field: "combined_similarity_value" },
-} as const;
-
-type SimType = keyof typeof SIM_ENDPOINTS;
+const SIM_TYPES = ["visual", "descriptive", "combined"] as const;
+type SimType = (typeof SIM_TYPES)[number];
 
 export async function POST(req: NextRequest) {
   try {
@@ -41,19 +34,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const payload = {
-      text: "placeholder",
-      location_1: [location1[0], location1[1]],
-      location_2: [location2[0], location2[1]],
-      api_key: apiKey,
-      resolution,
-    };
-
-    const wanted: SimType[] = type === "all" ? ["visual", "descriptive", "combined"] : [type];
+    const wanted: readonly SimType[] = type === "all" ? SIM_TYPES : [type];
 
     const results = await Promise.allSettled(
       wanted.map((t) =>
-        callBackend<Record<string, unknown>>(SIM_ENDPOINTS[t].key, { json: payload }),
+        callBackend<Record<string, unknown>>("abstractedSimilarity", {
+          json: {
+            text: "placeholder",
+            location_1_lat_lon_list: [location1[0], location1[1]],
+            location_2_lat_lon_list: [location2[0], location2[1]],
+            resolution,
+            similarity_type: t,
+            api_key: apiKey,
+          },
+        }),
       ),
     );
 
@@ -62,7 +56,7 @@ export async function POST(req: NextRequest) {
     wanted.forEach((t, i) => {
       const r = results[i];
       if (r.status === "fulfilled") {
-        const raw = r.value?.[SIM_ENDPOINTS[t].field];
+        const raw = r.value?.["location_pair_similarity_value"];
         const num = typeof raw === "number" ? raw : parseFloat(String(raw));
         if (Number.isFinite(num)) out[t] = num;
       } else if (!firstError) {
