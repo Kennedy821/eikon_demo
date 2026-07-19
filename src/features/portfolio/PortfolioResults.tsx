@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useMemo } from "react";
+import { cellToLatLng, latLngToCell, isValidCell } from "h3-js";
 import {
   Bar,
   BarChart,
@@ -37,8 +38,83 @@ export function PortfolioResults({
   onView: (v: View) => void;
 }) {
   const merged: MergedRow[] = useMemo(() => {
-    const byKey = new Map(pairs.map((p) => [`${p.orig}|${p.dest}`, p]));
-    return results.map((r) => ({ ...byKey.get(`${r.orig}|${r.dest}`), ...r }));
+    // The backend identifies each location differently by resolution: at
+    // low/medium it echoes back the friendly label we sent (e.g. "hyde_park");
+    // at high it returns the input's H3 resolution-9 cell (e.g.
+    // "89195da4bbbffff"). We resolve either form back to the same
+    // {name, lat, lon} so the map, chart, and table all show friendly names
+    // and render points regardless of resolution.
+    type Loc = { name: string; lat: number; lon: number };
+    const origByLabel = new Map<string, Loc>();
+    // Cell → list of inputs, because >1 input location can fall in the same
+    // res-9 hex. The backend collapses those into a single result row, so we
+    // surface a combined label rather than arbitrarily picking one name.
+    const origByCell = new Map<string, Loc[]>();
+    const destByLabel = new Map<string, Loc>();
+    const destByCell = new Map<string, Loc[]>();
+
+    // Dedupe locations by label first. `pairs` is a list of (orig, dest)
+    // pairs, so the same location recurs across rows; indexing raw pairs would
+    // add duplicate entries per cell. We collect unique locations by name, then
+    // index those — so a cell holding >1 entry is a genuine collision of
+    // *distinct* locations, not the same one repeated.
+    for (const p of pairs) {
+      origByLabel.set(p.orig, { name: p.orig, lat: p.origLat, lon: p.origLon });
+      destByLabel.set(p.dest, { name: p.dest, lat: p.destLat, lon: p.destLon });
+    }
+
+    function indexCells(byLabel: Map<string, Loc>, byCell: Map<string, Loc[]>) {
+      for (const loc of byLabel.values()) {
+        try {
+          const cell = latLngToCell(loc.lat, loc.lon, 9);
+          const existing = byCell.get(cell);
+          if (existing) existing.push(loc);
+          else byCell.set(cell, [loc]);
+        } catch {
+          /* invalid coords — skip cell indexing */
+        }
+      }
+    }
+    indexCells(origByLabel, origByCell);
+    indexCells(destByLabel, destByCell);
+
+    function resolve(id: string, byLabel: Map<string, Loc>, byCell: Map<string, Loc[]>): Loc | null {
+      const byName = byLabel.get(id);
+      if (byName) return byName; // low/medium — friendly label echoed back
+      if (isValidCell(id)) {
+        // high — the backend returned the res-9 cell of one (or more) inputs.
+        const hits = byCell.get(id);
+        if (hits && hits.length === 1) return hits[0];
+        if (hits && hits.length > 1) {
+          // Multiple inputs share this cell; the backend merged them. Show a
+          // combined label; use the cell centre for a stable coordinate.
+          const [lat, lon] = cellToLatLng(id);
+          return { name: hits.map((h) => h.name).join(" / "), lat, lon };
+        }
+        // Valid cell but not one of our inputs: decode it for coordinates.
+        try {
+          const [lat, lon] = cellToLatLng(id);
+          return { name: id, lat, lon };
+        } catch {
+          /* fall through */
+        }
+      }
+      return null;
+    }
+
+    return results.map((r) => {
+      const o = resolve(r.orig, origByLabel, origByCell);
+      const d = resolve(r.dest, destByLabel, destByCell);
+      return {
+        ...r,
+        orig: o?.name ?? r.orig,
+        dest: d?.name ?? r.dest,
+        origLat: o?.lat,
+        origLon: o?.lon,
+        destLat: d?.lat,
+        destLon: d?.lon,
+      };
+    });
   }, [results, pairs]);
 
   const sims = merged.map((r) => r.similarity).filter((s): s is number => s !== null);
