@@ -66,8 +66,11 @@ export const BACKEND = {
   chatStatus: { base: NGROK_BASE, path: "/eikon_ai_chat_queue_status", method: "GET" },
   chatTraces: { base: NGROK_BASE, path: "/eikon_ai_chat_reasoning_traces", method: "POST" },
 
-  // ---- portfolio (ngrok, via eikonsai.jobs.eikon_portfolio_comparison) ----
-  portfolio: { base: NGROK_BASE, path: "/eikon_portfolio_comparison", method: "POST" },
+  // ---- portfolio (ngrok) ----
+  // NB: the SDK's eikon_portfolio_comparison_uk() function POSTs to
+  // /eikon_portfolio_comparison_uk_dnn — the function name and route differ.
+  // This is the variant that works; payload + response shape are identical.
+  portfolio: { base: NGROK_BASE, path: "/eikon_portfolio_comparison_uk_dnn", method: "POST" },
 
   // ---- history (ngrok, via eikonsai.utils.get_previous_search_api_results) ----
   previousSearches: {
