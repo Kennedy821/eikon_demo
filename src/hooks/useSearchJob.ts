@@ -78,7 +78,11 @@ export function useSearchJob() {
 
   const progress = useQuery({
     queryKey: ["search-progress", jobId],
-    queryFn: () => getSearchProgress(apiKey as string),
+    // Scope the poll to this tab's job so two concurrent searches (two tabs,
+    // same api key) each track their own progress; jobId is always set here
+    // (the query is enabled only when it exists), but the param stays optional
+    // so legacy/no-id callers keep the backend's most-recent-job fallback.
+    queryFn: () => getSearchProgress(apiKey as string, jobId ?? undefined),
     enabled: !!jobId && !!apiKey && !isComplete,
     refetchInterval: isComplete ? false : POLL.searchProgress,
     retry: false,

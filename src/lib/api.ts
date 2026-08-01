@@ -57,8 +57,11 @@ export interface SearchProgress {
   jobComplete: boolean;
 }
 
-export function getSearchProgress(apiKey: string) {
-  return postJson<SearchProgress>("/api/eikon/search/progress", { apiKey });
+export function getSearchProgress(apiKey: string, jobId?: string) {
+  return postJson<SearchProgress>("/api/eikon/search/progress", {
+    apiKey,
+    ...(jobId ? { jobId } : {}),
+  });
 }
 
 // ---- context ----
