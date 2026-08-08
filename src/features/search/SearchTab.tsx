@@ -133,6 +133,25 @@ export function SearchTab() {
                 </button>
               )}
             </div>
+
+            {/* Escape hatch for a stranded search — mirrors the drone tab's
+                "Reset assessment lock". Without it, a job that never completes
+                leaves the form locked (jobId persists across reloads). */}
+            {isRunning && (
+              <>
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="w-full rounded border px-4 py-2 text-sm text-eikon-midnight"
+                >
+                  Reset search lock
+                </button>
+                <p className="text-xs text-eikon-muted">
+                  A search is already running. If you believe it has stalled or crashed, reset it
+                  to start a new one.
+                </p>
+              </>
+            )}
           </form>
 
           {isRunning && (
