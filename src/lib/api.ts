@@ -42,6 +42,12 @@ export function submitSearch(input: {
   effort?: string;
   spatialResolution?: string;
   borough?: string | null;
+  /**
+   * Optional custom AOI as a GeoJSON FeatureCollection (CRS 4326), mirroring a
+   * geopandas gdf[["unique_id","geometry"]].to_json(). Only sent by the
+   * experimental Search tab's "Map selection" mode; production search omits it.
+   */
+  geodataframe?: unknown;
 }) {
   return postJson<{ jobId: string }>("/api/eikon/search/submit", input);
 }

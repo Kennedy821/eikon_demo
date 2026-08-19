@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
       effort?: string;
       spatialResolution?: string;
       borough?: string | null;
+      geodataframe?: unknown;
     };
     const {
       prompt,
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
       effort = "test",
       spatialResolution = "UK - all",
       borough,
+      geodataframe,
     } = body;
 
     if (!prompt || !apiKey) {
@@ -38,6 +40,14 @@ export async function POST(req: NextRequest) {
     };
     if (spatialResolution === "UK - area" && borough) {
       payload.selected_area = borough;
+    }
+    // Custom map-drawn AOI: add the geodataframe (GeoJSON FeatureCollection with
+    // a unique_id column, CRS 4326) plus its crs/id descriptors, mirroring the
+    // aoi_type=="custom" payload. Only added when a polygon was drawn.
+    if (geodataframe) {
+      payload.geodataframe = geodataframe;
+      payload.crs = "EPSG:4326";
+      payload.unique_id = "unique_id";
     }
 
     const data = await callBackend<{ job_id?: string }>("searchSubmit", {
