@@ -4,7 +4,12 @@
  * touches an external origin from the browser.
  */
 
-import type { SearchResult, LocationContext, SimilarityResult } from "./types";
+import type {
+  SearchResult,
+  LocationContext,
+  SimilarityResult,
+  RemoteAssessmentStatus,
+} from "./types";
 import type { RawTrace } from "./chatFormat";
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
@@ -254,4 +259,24 @@ export async function synthesizeSpeech(text: string, voice: VoiceName = "Heart")
   const bytes = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
   const blob = new Blob([bytes], { type: "audio/wav" });
   return URL.createObjectURL(blob);
+}
+
+// ---- remote location assessment ----
+export interface RemoteAssessmentSubmitInput {
+  apiKey: string;
+  /** A single object class (e.g. "solar_panels") or "all". */
+  inspection: string;
+  executionMode: "fast" | "standard";
+  /** Supported UK area name — used when no polygon is drawn. */
+  area?: string | null;
+  /** GeoJSON FeatureCollection (CRS 4326) with a unique_id property — drawn AOI. */
+  geodataframe?: unknown;
+}
+
+export function submitRemoteAssessment(input: RemoteAssessmentSubmitInput) {
+  return postJson<{ jobId: string }>("/api/eikon/remote-assessment/submit", input);
+}
+
+export function getRemoteAssessmentStatus(apiKey: string, jobId: string) {
+  return postJson<RemoteAssessmentStatus>("/api/eikon/remote-assessment/status", { apiKey, jobId });
 }

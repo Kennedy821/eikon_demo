@@ -88,6 +88,27 @@ export const BACKEND = {
   },
   safestRoute: { base: NGROK_BASE, path: "/eikon_safest_route_pathfinder", method: "POST" },
 
+  // ---- remote location assessment (ngrok, via eikonsai.jobs.get_location_verification) ----
+  // One long-blocking POST kicks the job off; a separate endpoint reports the
+  // latest checkpoint and (on completion) the full result. "fast" execution
+  // uses the _v2 route and only covers a subset of very large areas; "standard"
+  // covers every cell.
+  remoteVerificationStandard: {
+    base: NGROK_BASE,
+    path: "/get_eikon_remote_location_verification",
+    method: "POST",
+  },
+  remoteVerificationFast: {
+    base: NGROK_BASE,
+    path: "/get_eikon_remote_location_verification_v2",
+    method: "POST",
+  },
+  remoteVerificationStatus: {
+    base: NGROK_BASE,
+    path: "/check_if_eikon_remote_location_verification_job_complete",
+    method: "POST",
+  },
+
   // ---- voice ----
   tts: { base: NGROK_BASE, path: "/eikon_tts", method: "POST" },
   kokoroTts: { base: GILGAMESH_BASE, path: "/kokoro_tts", method: "POST" },

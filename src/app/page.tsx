@@ -7,11 +7,11 @@ import { useAuth } from "@/hooks/useAuth";
 /** Landing route: send to /chat (default tab in the Streamlit app) or /login. */
 export default function Home() {
   const router = useRouter();
-  const { authenticated } = useAuth();
+  const { authenticated, hydrated } = useAuth();
 
   useEffect(() => {
-    router.replace(authenticated ? "/chat" : "/login");
-  }, [authenticated, router]);
+    if (hydrated) router.replace(authenticated ? "/chat" : "/login");
+  }, [hydrated, authenticated, router]);
 
   return (
     <main className="flex min-h-screen items-center justify-center">

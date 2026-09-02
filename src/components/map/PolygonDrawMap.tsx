@@ -11,6 +11,8 @@ import {
 } from "terra-draw";
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import type { Feature, Polygon } from "geojson";
+// Basemaps are shared with the assessment heat map (src/components/map/basemaps.ts).
+import { BASEMAP_STYLE, type Basemap } from "@/components/map/basemaps";
 
 /**
  * geojson.io-style AOI drawing map. Navigate anywhere in the world, then draw a
@@ -21,46 +23,6 @@ import type { Feature, Polygon } from "geojson";
  * Built on Terra Draw (the MapLibre-native equivalent of the mapbox-gl-draw
  * toolset geojson.io uses), since this app renders with maplibre-gl.
  */
-
-// Satellite imagery (Esri World Imagery) plus Esri's companion labels-only
-// overlay (place names, no roads). The arcgis_hybrid style previously used
-// here drew a prominent road network on top, which distracted from drawing
-// an AOI — this pairing keeps orientation labels without the road clutter.
-const SATELLITE_STYLE = {
-  version: 8 as const,
-  sources: {
-    esri: {
-      type: "raster" as const,
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      ],
-      tileSize: 256,
-      attribution:
-        "Esri, Maxar, Earthstar Geographics, and the GIS User Community",
-      maxzoom: 19,
-    },
-    esriLabels: {
-      type: "raster" as const,
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-      ],
-      tileSize: 256,
-      maxzoom: 19,
-    },
-  },
-  layers: [
-    { id: "esri-imagery", type: "raster" as const, source: "esri" },
-    { id: "esri-labels", type: "raster" as const, source: "esriLabels" },
-  ],
-};
-
-// Same Carto styles the drone risk-assessment map offers.
-type Basemap = "Satellite" | "Light" | "Dark";
-const BASEMAP_STYLE: Record<Basemap, unknown> = {
-  Satellite: SATELLITE_STYLE,
-  Light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-  Dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-};
 
 type DrawMode = "polygon" | "rectangle" | "circle";
 

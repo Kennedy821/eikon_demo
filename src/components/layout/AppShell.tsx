@@ -16,6 +16,7 @@ const TABS = [
   { href: "/portfolio", label: "Portfolio" },
   { href: "/object-detection", label: "Object Detection" },
   { href: "/drone-corridor", label: "Drone Corridor" },
+  { href: "/remote-assessment", label: "Remote Assessment" },
   { href: "/memory", label: "Memory" },
   { href: "/history", label: "History" },
   { href: "/docs", label: "Docs" },
@@ -24,14 +25,14 @@ const TABS = [
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { authenticated, userEmail, logout } = useAuth();
+  const { authenticated, hydrated, userEmail, logout } = useAuth();
   const { data: credits } = useCredits();
 
   useEffect(() => {
-    if (!authenticated) router.replace("/login");
-  }, [authenticated, router]);
+    if (hydrated && !authenticated) router.replace("/login");
+  }, [hydrated, authenticated, router]);
 
-  if (!authenticated) return null;
+  if (!hydrated || !authenticated) return null;
 
   return (
     <div className="min-h-screen">

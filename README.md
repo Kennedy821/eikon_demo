@@ -8,9 +8,14 @@ endpoint inventory, state-mapping, and phased roadmap.
 
 ## Status
 
-**Phase 0 — Foundation (scaffolded).** Config, providers, typed endpoint
-inventory, API client, domain types, app shell + tab nav, login, and per-tab
-placeholder pages are in place. Tabs are stubbed and wired into the nav.
+All tabs from the Streamlit app are ported (Eikon AI, Search, Context,
+Similarity, Portfolio, Object Detection, Drone Corridor, Memory, History, Docs).
+
+**Remote Assessment** (new, not in the Streamlit app) runs object detection
+across every tile in a dropdown area or a map-drawn polygon and renders a
+per-cell coverage heat map, with an object selector built from whatever classes
+the backend returns. See `../CLAUDE_CONTEXT.md` § "Remote Assessment Tab" for
+the backend contract and file map.
 
 ## Stack
 

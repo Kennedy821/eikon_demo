@@ -26,6 +26,9 @@ import { login as loginRequest } from "@/lib/api";
 const STORAGE_KEY = "eikon.auth";
 
 interface AuthContextValue extends AuthState {
+  /** False until the stored session has been read on the client. Guards
+   *  redirects so a direct load of a tab URL doesn't bounce to /login. */
+  hydrated: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -39,6 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     userEmail: null,
   });
 
+  const [hydrated, setHydrated] = useState(false);
+
   // Rehydrate from storage on mount (dev convenience; replace with cookie).
   useEffect(() => {
     try {
@@ -47,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
+    setHydrated(true);
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -76,8 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, login, logout }),
-    [state, login, logout],
+    () => ({ ...state, hydrated, login, logout }),
+    [state, hydrated, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -134,3 +134,43 @@ export interface ApiError {
   status: number;
   message: string;
 }
+
+// ---- Remote location assessment --------------------------------------------
+/**
+ * One H3 res-9 cell × one object class, as returned by
+ * /get_eikon_remote_location_verification[_v2]. `coverage` is the fraction of
+ * the cell's area covered by the detected object (backend `clean_pct_float`).
+ */
+export interface RemoteAssessmentCell {
+  locationId: string;
+  objectName: string;
+  coverage: number; // 0..1
+  lat: number;
+  lon: number;
+  cellAreaKm2: number;
+  objectAreaKm2: number;
+  /** Mean detector confidence for this cell/object (backend `mean_model_confidence`), 0..1; null when not reported. */
+  meanModelConfidence: number | null;
+  areaName?: string;
+  raw: Record<string, unknown>;
+}
+
+export interface RemoteAssessmentProgressDetail {
+  locationsDone: number;
+  locationsTotal: number;
+  elapsedSeconds: number | null;
+  etaSeconds: number | null;
+  area: string | null;
+}
+
+export interface RemoteAssessmentStatus {
+  status: "running" | "completed" | "failed";
+  /** 0..100 — from the backend's progress block, else the checkpoint name; null before the first checkpoint. */
+  progress: number | null;
+  latestCkpt: string;
+  detail?: RemoteAssessmentProgressDetail | null;
+  cells?: RemoteAssessmentCell[];
+  error?: string;
+  /** Non-fatal warning (e.g. the blocking submit call dropped but polling continues). */
+  note?: string;
+}

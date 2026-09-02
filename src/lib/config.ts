@@ -36,6 +36,9 @@ export const POLL = {
   searchProgress: 10_000,
   chatTraces: 1500,
   corridorAssessment: 3000,
+  // 8s: the SDK polls every 10s; the backend can be slow to answer while a
+  // job is mid-flight, so don't stack requests.
+  remoteAssessmentStatus: 8000,
 } as const;
 
 /** Cache staleness windows (ms) for TanStack Query. */
