@@ -16,7 +16,7 @@ const TABS = [
   { href: "/portfolio", label: "Portfolio" },
   { href: "/object-detection", label: "Object Detection" },
   { href: "/drone-corridor", label: "Drone Corridor" },
-  { href: "/remote-assessment", label: "Remote Assessment" },
+  { href: "/remote-assessment", label: "Remote Inspection" },
   { href: "/memory", label: "Memory" },
   { href: "/history", label: "History" },
   { href: "/docs", label: "Docs" },

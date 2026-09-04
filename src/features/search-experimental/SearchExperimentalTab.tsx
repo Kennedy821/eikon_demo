@@ -84,7 +84,7 @@ export function SearchExperimentalTab() {
       <div>
         <h1 className="text-2xl font-bold text-eikon-midnight">Location Search</h1>
         <p className="text-sm text-eikon-muted">
-          Search for locations across the UK using natural language queries.
+          Search for locations across the UK.
         </p>
       </div>
 

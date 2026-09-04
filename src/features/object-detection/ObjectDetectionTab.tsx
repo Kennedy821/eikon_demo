@@ -75,7 +75,7 @@ export function ObjectDetectionTab() {
         <div>
           <h1 className="text-2xl font-bold text-eikon-midnight">Object Detection</h1>
           <p className="text-sm text-eikon-muted">
-            Detect objects in aerial imagery using YOLO-based computer vision.
+            Detect objects in aerial imagery.
           </p>
         </div>
 

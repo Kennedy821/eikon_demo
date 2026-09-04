@@ -25,7 +25,7 @@ const ALL_OBJECTS = "all";
 // Object classes the remote verification backend currently supports. Kept
 // deliberately short — the full DETECTABLE_OBJECTS list belongs to the
 // per-tile object-detection endpoint, not this one.
-const OBJECT_OPTIONS = ["solar_panels", "industrial_buildings"];
+const OBJECT_OPTIONS = ["solar_panels", "industrial_buildings", "motorway", "railway_line"];
 const RESULT_VIEWS = ["Heat Map", "Data Table"] as const;
 type ResultView = (typeof RESULT_VIEWS)[number];
 
@@ -131,11 +131,8 @@ export function RemoteAssessmentTab() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-eikon-midnight">Remote Location Assessment</h1>
-        <p className="text-sm text-eikon-muted">
-          Run object detection across every satellite tile in an area and see where, and how densely,
-          each object appears.
-        </p>
+        <h1 className="text-2xl font-bold text-eikon-midnight">Remote Visual Inspection</h1>
+        <p className="text-sm text-eikon-muted">Object coverage across an area of interest.</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
@@ -174,17 +171,14 @@ export function RemoteAssessmentTab() {
 
             {isMapMode && (
               <div className="space-y-1.5">
-                <span className="block text-sm text-eikon-muted">Draw area of interest</span>
+                <span className="block text-sm text-eikon-muted">Area</span>
                 <PolygonDrawMap onChange={setAoi} />
-                <p className={`text-xs ${aoi ? "text-green-700" : "text-eikon-muted"}`}>
-                  {aoi
-                    ? `✓ Area captured — ${aoiKm2.toFixed(1)} km² will be assessed.`
-                    : "Navigate the map, pick a tool (Polygon, Rectangle, or Circle), and draw the area to assess."}
-                </p>
+                {aoi && (
+                  <p className="text-xs text-green-700">{aoiKm2.toFixed(1)} km²</p>
+                )}
                 {aoi && executionMode === "fast" && aoiKm2 > FAST_MODE_FULL_COVERAGE_KM2 && (
                   <p className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
-                    Large area: fast mode will only assess a portion of it. Switch to standard for full
-                    coverage.
+                    Fast mode will only assess part of an area this size.
                   </p>
                 )}
               </div>
@@ -213,14 +207,9 @@ export function RemoteAssessmentTab() {
                 onChange={(e) => setExecutionMode(e.target.value as "fast" | "standard")}
                 className="w-full rounded border px-2 py-1.5"
               >
-                <option value="fast">Fast (recommended)</option>
-                <option value="standard">Standard (full coverage)</option>
+                <option value="fast">Fast</option>
+                <option value="standard">Standard</option>
               </select>
-              <span className="mt-1 block text-xs text-eikon-muted">
-                {executionMode === "fast"
-                  ? "Covers the whole area when it is small; for very large areas only the most likely cells are assessed."
-                  : "Assesses every cell in the area. Slower, but complete."}
-              </span>
             </label>
 
             <div className="flex gap-2">
@@ -251,10 +240,6 @@ export function RemoteAssessmentTab() {
                 >
                   Reset assessment lock
                 </button>
-                <p className="text-xs text-eikon-muted">
-                  An assessment is already running. If you believe it has stalled or crashed, reset it
-                  to start a new one.
-                </p>
               </>
             )}
           </form>
@@ -350,9 +335,8 @@ export function RemoteAssessmentTab() {
 
                 {selectedObject && visibleCells.every((c) => c.coverage === 0) && (
                   <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    No {labelFor(selectedObject)} detected in any of the{" "}
-                    {visibleCells.length.toLocaleString()} cells assessed. The map shows the extent that
-                    was inspected.
+                    No {labelFor(selectedObject)} detected in the {visibleCells.length.toLocaleString()}{" "}
+                    cells assessed.
                   </p>
                 )}
 
@@ -367,9 +351,7 @@ export function RemoteAssessmentTab() {
           ) : (
             !error && (
               <div className="flex h-full min-h-[300px] items-center justify-center rounded-lg border border-dashed text-sm text-eikon-muted">
-                {isRunning
-                  ? "Assessing — the coverage heat map will appear here."
-                  : "Choose an area and an object, then run the assessment."}
+                {isRunning ? "Assessing…" : ""}
               </div>
             )
           )}
@@ -382,12 +364,7 @@ export function RemoteAssessmentTab() {
 function NoCellsState() {
   return (
     <div className="space-y-2 rounded-lg border border-dashed p-6 text-sm text-eikon-muted">
-      <p className="font-semibold text-eikon-midnight">The assessment finished but returned no cells.</p>
-      <p>
-        Nothing was detected and no cells were reported for this area. If you drew a polygon, check it
-        covers land inside the UK; otherwise try a different area, object, or the standard execution
-        mode.
-      </p>
+      <p className="font-semibold text-eikon-midnight">No cells were returned for this area.</p>
     </div>
   );
 }
