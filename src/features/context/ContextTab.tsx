@@ -198,6 +198,7 @@ export function ContextTab() {
                 ]}
                 zoom={14}
                 height={360}
+                basemapToggle
               />
 
               <div className="space-y-1 text-sm">

@@ -4,7 +4,8 @@ import { DeckGL } from "@deck.gl/react";
 import { ScatterplotLayer, LineLayer } from "@deck.gl/layers";
 import { Map } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { BASEMAP_STYLE, type Basemap } from "@/components/map/basemaps";
 
 /**
  * Generic deck.gl map for plotting labelled points and optional connector
@@ -14,7 +15,7 @@ import { useMemo } from "react";
  * those Streamlit tabs.
  */
 
-const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+const BASEMAP_ORDER: Basemap[] = ["Light", "Dark", "Satellite"];
 
 export type RGBA = [number, number, number, number];
 
@@ -41,6 +42,8 @@ interface Props {
   zoom?: number;
   height?: number;
   defaultRadius?: number;
+  /** Show the Light/Dark/Satellite switch. Off by default so existing maps are unchanged. */
+  basemapToggle?: boolean;
 }
 
 export default function PointsMap({
@@ -49,7 +52,9 @@ export default function PointsMap({
   zoom = 11,
   height = 420,
   defaultRadius = 300,
+  basemapToggle = false,
 }: Props) {
+  const [basemap, setBasemap] = useState<Basemap>("Light");
   const center = useMemo(() => {
     if (points.length === 0) return { longitude: -0.1278, latitude: 51.5074 };
     return {
@@ -94,8 +99,27 @@ export default function PointsMap({
           return parts.length ? { text: parts.join("\n") } : null;
         }}
       >
-        <Map mapStyle={MAP_STYLE} />
+        <Map mapStyle={BASEMAP_STYLE[basemap] as never} />
       </DeckGL>
+
+      {basemapToggle && (
+        <div className="absolute right-2 top-2 flex gap-1 rounded-lg border bg-white/95 p-1 shadow-sm">
+          {BASEMAP_ORDER.map((b) => (
+            <button
+              key={b}
+              type="button"
+              onClick={() => setBasemap(b)}
+              className={`rounded px-2 py-0.5 text-xs ${
+                basemap === b
+                  ? "bg-eikon-midnight text-white"
+                  : "text-eikon-midnight hover:bg-eikon-panel"
+              }`}
+            >
+              {b}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
