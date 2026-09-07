@@ -72,6 +72,9 @@ export function useSearchExperimentalJob() {
     // hammering the backend for a multi-minute moderate/exhaustive run.
     refetchInterval: (query) =>
       query.state.data?.status === "completed" ? false : POLL.searchStatus,
+    // Keep polling while the tab is in the background — a multi-minute search
+    // is exactly when users switch away, and results must land regardless.
+    refetchIntervalInBackground: true,
     // Don't surface transient poll errors as user-facing failures while the
     // job is still running — a 502/timeout during a long search is not fatal.
     retry: false,
@@ -116,6 +119,7 @@ export function useSearchExperimentalJob() {
     queryFn: () => getSearchProgress(apiKey as string, jobId ?? undefined),
     enabled: !!jobId && !!apiKey && !isComplete,
     refetchInterval: isComplete ? false : POLL.searchProgress,
+    refetchIntervalInBackground: true,
     retry: false,
   });
 

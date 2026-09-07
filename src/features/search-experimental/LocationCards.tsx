@@ -23,6 +23,9 @@ export function LocationCards({
   onAddResults?: (r: SearchResult[]) => void;
 }) {
   const [index, setIndex] = useState(initialIndex);
+  // "More like this" matches, keyed by the location they were requested for.
+  // Matches are only ever shown on that location's card.
+  const [similarByLocation, setSimilarByLocation] = useState<Record<string, SimilarItem[]>>({});
 
   useEffect(() => {
     setIndex(initialIndex);
@@ -55,7 +58,17 @@ export function LocationCards({
         </button>
       </div>
 
-      <LocationCard loc={loc} onAddResults={onAddResults} />
+      {/* Keyed by location so the card (and its "More like this" request
+          state) remounts per location instead of carrying over. */}
+      <LocationCard
+        key={loc.locationId || i}
+        loc={loc}
+        onAddResults={onAddResults}
+        similarItems={similarByLocation[loc.locationId] ?? null}
+        onSimilarItems={(items) =>
+          setSimilarByLocation((prev) => ({ ...prev, [loc.locationId]: items }))
+        }
+      />
 
       <label className="block text-sm">
         <span className="mr-2 text-eikon-muted">Jump to location:</span>
@@ -90,9 +103,13 @@ function resolutionLabel(locationId: string): string {
 function LocationCard({
   loc,
   onAddResults,
+  similarItems,
+  onSimilarItems,
 }: {
   loc: SearchResult;
   onAddResults?: (r: SearchResult[]) => void;
+  similarItems: SimilarItem[] | null;
+  onSimilarItems: (items: SimilarItem[]) => void;
 }) {
   const { apiKey } = useAuth();
 
@@ -213,7 +230,12 @@ function LocationCard({
         </div>
       )}
 
-      <MoreLikeThis loc={loc} onAddResults={onAddResults} />
+      <MoreLikeThis
+        loc={loc}
+        onAddResults={onAddResults}
+        items={similarItems}
+        onItems={onSimilarItems}
+      />
     </div>
   );
 }
@@ -225,12 +247,19 @@ function LocationCard({
  * nearby locations. Mirrors the k_ring + eikon_portfolio_comparison_uk
  * expansion pattern from the reference notebook.
  */
+export type SimilarItem = { dest: string; similarity: number | null };
+
 function MoreLikeThis({
   loc,
   onAddResults,
+  items,
+  onItems,
 }: {
   loc: SearchResult;
   onAddResults?: (r: SearchResult[]) => void;
+  /** Matches previously requested for this location; null if never requested. */
+  items: SimilarItem[] | null;
+  onItems: (items: SimilarItem[]) => void;
 }) {
   const { apiKey } = useAuth();
 
@@ -252,13 +281,16 @@ function MoreLikeThis({
       });
     },
     onSuccess: (data) => {
-      if (!onAddResults) return;
-      // Append the top matches to the results set so they show up in the
-      // Data Table, on the map, and in the CSV export.
+      // Rank by similarity descending and keep the closest matches.
       const top = (data.results ?? [])
         .filter((r) => r.similarity !== null && isValidCell(r.dest) && r.dest !== loc.locationId)
         .sort((a, b) => (b.similarity as number) - (a.similarity as number))
-        .slice(0, 10);
+        .slice(0, 10)
+        .map((r) => ({ dest: r.dest, similarity: r.similarity }));
+      onItems(top);
+      if (!onAddResults) return;
+      // Append the top matches to the results set so they show up in the
+      // Data Table, on the map, and in the CSV export.
       onAddResults(
         top.map((r) => {
           const [lat, lon] = cellToLatLng(r.dest);
@@ -280,11 +312,7 @@ function MoreLikeThis({
     },
   });
 
-  // Rank by similarity descending and keep the closest matches.
-  const ranked = (similar.data?.results ?? [])
-    .filter((r) => r.similarity !== null && isValidCell(r.dest) && r.dest !== loc.locationId)
-    .sort((a, b) => (b.similarity as number) - (a.similarity as number))
-    .slice(0, 10);
+  const ranked = items ?? [];
 
   return (
     <div className="space-y-3 border-t pt-3">
@@ -308,7 +336,7 @@ function MoreLikeThis({
         </p>
       )}
 
-      {similar.isSuccess && ranked.length === 0 && (
+      {items !== null && ranked.length === 0 && (
         <p className="text-sm text-eikon-muted">No similar locations found near this one.</p>
       )}
 
