@@ -25,7 +25,17 @@ const ALL_OBJECTS = "all";
 // Object classes the remote verification backend currently supports. Kept
 // deliberately short — the full DETECTABLE_OBJECTS list belongs to the
 // per-tile object-detection endpoint, not this one.
-const OBJECT_OPTIONS = ["solar_panels", "industrial_buildings", "motorway", "railway_line"];
+const OBJECT_OPTIONS = [
+  "solar_panels",
+  "industrial_buildings",
+  "motorway",
+  "railway_line",
+  "lake",
+  "parking_lot",
+  "tennis_court",
+  "wind_turbine",
+  "electricity_pylon",
+];
 const RESULT_VIEWS = ["Heat Map", "Data Table"] as const;
 type ResultView = (typeof RESULT_VIEWS)[number];
 
