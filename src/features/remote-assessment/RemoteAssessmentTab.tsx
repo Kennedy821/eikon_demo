@@ -354,7 +354,12 @@ export function RemoteAssessmentTab() {
                   <AssessmentHeatMap cells={visibleCells} aoi={request?.aoi ?? null} />
                 )}
                 {view === "Data Table" && (
-                  <DataTable cells={visibleCells} objectName={selectedObject ?? "objects"} />
+                  <DataTable
+                    cells={visibleCells}
+                    allCells={cells}
+                    objectName={selectedObject ?? "objects"}
+                    objectCount={objectStats.length}
+                  />
                 )}
               </div>
             )
@@ -425,32 +430,61 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DataTable({ cells, objectName }: { cells: RemoteAssessmentCell[]; objectName: string }) {
+/** Serialise cells to CSV using the union of their raw backend columns. */
+function cellsToCsv(cells: RemoteAssessmentCell[]): string {
+  const columns = Array.from(
+    cells.reduce((set, c) => {
+      Object.keys(c.raw).forEach((k) => set.add(k));
+      return set;
+    }, new Set<string>()),
+  );
+  const esc = (v: unknown) => {
+    const s = v === null || v === undefined ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = cells.map((c) => columns.map((k) => esc(c.raw[k])).join(","));
+  return [columns.join(","), ...lines].join("\n");
+}
+
+function downloadCsvFile(csv: string, filename: string) {
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function DataTable({
+  cells,
+  allCells,
+  objectName,
+  objectCount,
+}: {
+  cells: RemoteAssessmentCell[];
+  /** Every cell returned by the assessment, across all object classes. */
+  allCells: RemoteAssessmentCell[];
+  objectName: string;
+  objectCount: number;
+}) {
   const [detectedOnly, setDetectedOnly] = useState(true);
   const rows = useMemo(() => {
     const filtered = detectedOnly ? cells.filter((c) => c.coverage > 0) : cells;
     return [...filtered].sort((a, b) => b.coverage - a.coverage);
   }, [cells, detectedOnly]);
 
+  // The table's current view: selected object, honouring the detections filter.
   function downloadCsv() {
-    const columns = Array.from(
-      cells.reduce((set, c) => {
-        Object.keys(c.raw).forEach((k) => set.add(k));
-        return set;
-      }, new Set<string>()),
+    downloadCsvFile(cellsToCsv(rows), `eikon_remote_assessment_${objectName}.csv`);
+  }
+
+  // Everything the assessment returned: every cell, every object class,
+  // regardless of the selected object or the detections filter.
+  function downloadAllCsv() {
+    const sorted = [...allCells].sort(
+      (a, b) => a.objectName.localeCompare(b.objectName) || b.coverage - a.coverage,
     );
-    const esc = (v: unknown) => {
-      const s = v === null || v === undefined ? "" : String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const lines = rows.map((c) => columns.map((k) => esc(c.raw[k])).join(","));
-    const csv = [columns.join(","), ...lines].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `eikon_remote_assessment_${objectName}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvFile(cellsToCsv(sorted), "eikon_remote_assessment_all.csv");
   }
 
   return (
@@ -458,6 +492,13 @@ function DataTable({ cells, objectName }: { cells: RemoteAssessmentCell[]; objec
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={downloadCsv} className="rounded border px-4 py-2 text-sm text-eikon-midnight">
           Download results (CSV)
+        </button>
+        <button
+          onClick={downloadAllCsv}
+          className="rounded border px-4 py-2 text-sm text-eikon-midnight"
+        >
+          Download all data (CSV)
+          {objectCount > 1 ? ` — ${allCells.length.toLocaleString()} rows` : ""}
         </button>
         <label className="flex items-center gap-2 text-sm text-eikon-muted">
           <input

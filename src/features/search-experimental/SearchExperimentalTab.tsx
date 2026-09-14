@@ -299,27 +299,46 @@ function DataTable({ results }: { results: SearchResult[] }) {
     return v === null || v === undefined ? "" : String(v);
   }
 
-  function downloadCsv() {
+  // Every raw column the backend returned, including the heavy text columns
+  // the table hides (descriptions, AI rationale, detected objects).
+  const allColumns = Array.from(
+    results.reduce((set, r) => {
+      Object.keys(r.raw).forEach((k) => set.add(k));
+      return set;
+    }, new Set<string>()),
+  );
+
+  function writeCsv(cols: string[], filename: string) {
     const esc = (v: unknown) => {
       const s = v === null || v === undefined ? "" : String(v);
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const header = columns.join(",");
-    const lines = results.map((r) => columns.map((c) => esc(r.raw[c])).join(","));
-    const csv = [header, ...lines].join("\n");
+    const lines = results.map((r) => cols.map((c) => esc(r.raw[c])).join(","));
+    const csv = [cols.join(","), ...lines].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = "eikon_search_results.csv";
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   }
 
+  const downloadCsv = () => writeCsv(columns, "eikon_search_results.csv");
+  const downloadAllCsv = () => writeCsv(allColumns, "eikon_search_results_all.csv");
+
   return (
     <div className="space-y-3">
-      <button onClick={downloadCsv} className="rounded border px-4 py-2 text-sm text-eikon-midnight">
-        Download Full Results (CSV)
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={downloadCsv} className="rounded border px-4 py-2 text-sm text-eikon-midnight">
+          Download Results (CSV)
+        </button>
+        <button
+          onClick={downloadAllCsv}
+          className="rounded border px-4 py-2 text-sm text-eikon-midnight"
+        >
+          Download all data (CSV) — {allColumns.length} columns
+        </button>
+      </div>
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
           <thead className="bg-eikon-panel text-left text-eikon-midnight">

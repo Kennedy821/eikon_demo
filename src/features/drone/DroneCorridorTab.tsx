@@ -325,7 +325,7 @@ function Results({
       )}
 
       {view === "Route Map" && routes.length > 0 && <RouteTable routes={routes} withRanks />}
-      {view === "Data Table" && <DataTable routes={routes} />}
+      {view === "Data Table" && <DataTable routes={routes} assessment={assessment} />}
     </div>
   );
 }
@@ -376,8 +376,52 @@ function RouteTable({ routes }: { routes: DroneRoute[]; withRanks?: boolean }) {
   );
 }
 
-function DataTable({ routes }: { routes: DroneRoute[] }) {
-  if (routes.length === 0) return <p className="text-sm text-eikon-muted">No routes to display.</p>;
+function DataTable({
+  routes,
+  assessment,
+}: {
+  routes: DroneRoute[];
+  /** Per-cell risk assessment behind the map — every cell, every column. */
+  assessment: AssessmentCell[];
+}) {
+  // Every raw column the assessment endpoint returned, across all cells.
+  const assessmentColumns = Array.from(
+    assessment.reduce((set, c) => {
+      Object.keys(c).forEach((k) => set.add(k));
+      return set;
+    }, new Set<string>()),
+  );
+
+  function downloadAssessmentCsv() {
+    const esc = (v: unknown) => {
+      const s = v === null || v === undefined ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = assessment.map((c) => assessmentColumns.map((k) => esc(c[k])).join(","));
+    const csv = [assessmentColumns.join(","), ...lines].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "drone_corridor_assessment_all.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (routes.length === 0) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-eikon-muted">No routes to display.</p>
+        {assessment.length > 0 && (
+          <button
+            onClick={downloadAssessmentCsv}
+            className="rounded border px-4 py-2 text-sm text-eikon-midnight"
+          >
+            Download all data (CSV) — {assessment.length.toLocaleString()} cells
+          </button>
+        )}
+      </div>
+    );
+  }
 
   function downloadCsv() {
     const cols = [
@@ -414,9 +458,17 @@ function DataTable({ routes }: { routes: DroneRoute[] }) {
   return (
     <div className="space-y-3">
       <RouteTable routes={routes} />
-      <button onClick={downloadCsv} className="rounded border px-4 py-2 text-sm text-eikon-midnight">
-        Download Routes CSV
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={downloadCsv} className="rounded border px-4 py-2 text-sm text-eikon-midnight">
+          Download Routes CSV
+        </button>
+        <button
+          onClick={downloadAssessmentCsv}
+          className="rounded border px-4 py-2 text-sm text-eikon-midnight"
+        >
+          Download all data (CSV) — {assessment.length.toLocaleString()} cells
+        </button>
+      </div>
     </div>
   );
 }
