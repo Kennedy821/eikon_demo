@@ -11,7 +11,9 @@ import {
   combineAoiFeatures,
   bufferAoiFeatures,
   bufferLabel,
+  pointCount,
   BUFFER_OPTIONS_M,
+  POINT_RADIUS_M,
   GeoJsonAoiError,
   type AoiFeature,
 } from "@/lib/geojsonAoi";
@@ -82,6 +84,7 @@ export function RemoteAssessmentTab() {
   const [aoi, setAoi] = useState<Feature<Polygon> | null>(null);
   const [uploaded, setUploaded] = useState<AoiFeature[]>([]);
   const [uploadWarnings, setUploadWarnings] = useState<string[]>([]);
+  const [uploadedPoints, setUploadedPoints] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [bufferM, setBufferM] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -130,9 +133,11 @@ export function RemoteAssessmentTab() {
       const combined = combineAoiFeatures(parsed);
       setUploaded(combined.features);
       setUploadWarnings(combined.warnings);
+      setUploadedPoints(pointCount(combined.convertedCounts));
     } catch (err) {
       setUploaded([]);
       setUploadWarnings([]);
+      setUploadedPoints(0);
       setUploadError(
         err instanceof GeoJsonAoiError || err instanceof Error
           ? err.message
@@ -144,6 +149,7 @@ export function RemoteAssessmentTab() {
   function clearUpload() {
     setUploaded([]);
     setUploadWarnings([]);
+    setUploadedPoints(0);
     setUploadError(null);
     setBufferM(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -209,24 +215,28 @@ export function RemoteAssessmentTab() {
   }, [request]);
 
   // Per-location rollup for uploaded AOIs, keyed by the backend's unique_id.
+  // Every uploaded location is seeded first, so one with no rows for the
+  // selected object still appears with zeros rather than vanishing from the
+  // results — the count always matches what the user uploaded.
   const locationStats = useMemo(() => {
-    const byId = new Map<
-      string,
-      { cells: number; detected: number; objectAreaKm2: number; peak: number }
-    >();
+    type Stat = { cells: number; detected: number; objectAreaKm2: number; peak: number };
+    const byId: Record<string, Stat> = {};
+    for (const f of request?.uploaded ?? []) {
+      byId[f.properties.unique_id] = { cells: 0, detected: 0, objectAreaKm2: 0, peak: 0 };
+    }
     for (const c of visibleCells) {
       if (!c.uniqueId) continue;
-      const st = byId.get(c.uniqueId) ?? { cells: 0, detected: 0, objectAreaKm2: 0, peak: 0 };
+      const st = byId[c.uniqueId] ?? { cells: 0, detected: 0, objectAreaKm2: 0, peak: 0 };
       st.cells += 1;
       if (c.coverage > 0) st.detected += 1;
       st.objectAreaKm2 += c.objectAreaKm2;
       if (c.coverage > st.peak) st.peak = c.coverage;
-      byId.set(c.uniqueId, st);
+      byId[c.uniqueId] = st;
     }
-    return Array.from(byId.entries())
+    return Object.entries(byId)
       .map(([uniqueId, st]) => ({ uniqueId, ...st }))
       .sort((a, b) => b.objectAreaKm2 - a.objectAreaKm2 || a.uniqueId.localeCompare(b.uniqueId));
-  }, [visibleCells]);
+  }, [visibleCells, request]);
 
   const requestScope = request
     ? request.uploaded?.length
@@ -355,6 +365,14 @@ export function RemoteAssessmentTab() {
                       ))}
                     </select>
                   </label>
+                )}
+
+                {uploadedPoints > 0 && (
+                  <p className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                    {uploadedPoints} point{uploadedPoints === 1 ? "" : "s"} assessed as{" "}
+                    {bufferLabel(bufferM || POINT_RADIUS_M)} circle
+                    {uploadedPoints === 1 ? "" : "s"}.
+                  </p>
                 )}
 
                 {uploadWarnings.map((w) => (
@@ -516,7 +534,7 @@ export function RemoteAssessmentTab() {
                   )}
                 </div>
 
-                {selectedObject && visibleCells.every((c) => c.coverage === 0) && (
+                {selectedObject && visibleCells.length > 0 && visibleCells.every((c) => c.coverage === 0) && (
                   <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
                     No {labelFor(selectedObject)} detected in the {visibleCells.length.toLocaleString()}{" "}
                     cells assessed.
@@ -524,7 +542,11 @@ export function RemoteAssessmentTab() {
                 )}
 
                 {view === "Heat Map" && (
-                  <AssessmentHeatMap cells={visibleCells} aoi={aoiOutlines} />
+                  <AssessmentHeatMap
+                    cells={visibleCells}
+                    aoi={aoiOutlines}
+                    pointRadiusM={request?.bufferM || POINT_RADIUS_M}
+                  />
                 )}
                 {view === "By Location" && locationStats.length > 0 && (
                   <LocationBreakdown stats={locationStats} objectName={selectedObject} />

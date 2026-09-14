@@ -4,11 +4,13 @@ import { useMemo, useState } from "react";
 import { DeckGL } from "@deck.gl/react";
 import { WebMercatorViewport } from "@deck.gl/core";
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
-import { GeoJsonLayer } from "@deck.gl/layers";
+import { GeoJsonLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { latLngToCell } from "h3-js";
 import { Map } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
+import type { Position } from "geojson";
 import type { RemoteAssessmentCell } from "@/lib/types";
-import { featureBounds, type AoiFeature } from "@/lib/geojsonAoi";
+import { AOI_H3_RESOLUTION, featureBounds, type AoiFeature } from "@/lib/geojsonAoi";
 import { BASEMAP_STYLE, type Basemap } from "@/components/map/basemaps";
 
 /**
@@ -61,14 +63,26 @@ function formatConfidence(v: number | null) {
   return `${(v * 100).toFixed(1)}%`;
 }
 
+/** A point AOI drawn as a marker: true radius in metres, never sub-pixel. */
+interface PointDatum extends RemoteAssessmentCell {
+  centre: Position;
+}
+
 interface Props {
   cells: RemoteAssessmentCell[];
   /** AOI outlines (drawn or uploaded) — drawn on top for orientation. */
   aoi?: AoiFeature[] | null;
+  /** Radius of point-sourced AOIs, in metres. */
+  pointRadiusM?: number;
   height?: number;
 }
 
-export default function AssessmentHeatMap({ cells, aoi, height = 520 }: Props) {
+export default function AssessmentHeatMap({
+  cells,
+  aoi,
+  pointRadiusM = 0,
+  height = 520,
+}: Props) {
   const [basemap, setBasemap] = useState<Basemap>("Light");
   // Lets the user see the underlying imagery (e.g. to eyeball a detection)
   // without leaving the assessment view.
@@ -77,6 +91,28 @@ export default function AssessmentHeatMap({ cells, aoi, height = 520 }: Props) {
   const maxCoverage = useMemo(
     () => cells.reduce((m, c) => (c.coverage > m ? c.coverage : m), 0),
     [cells],
+  );
+
+  // Point AOIs render as markers rather than outlines: a circle of the real
+  // radius that never shrinks below a few pixels, so the location stays
+  // visible when zoomed out to the whole country and grows as you zoom in.
+  const pointData = useMemo<PointDatum[]>(() => {
+    const byCell: Record<string, RemoteAssessmentCell> = {};
+    for (const c of cells) byCell[c.locationId] = c;
+    const out: PointDatum[] = [];
+    for (const f of aoi ?? []) {
+      for (const centre of f.properties.point_centres ?? []) {
+        const cell = byCell[latLngToCell(centre[1], centre[0], AOI_H3_RESOLUTION)];
+        if (cell) out.push({ ...cell, centre });
+      }
+    }
+    return out;
+  }, [aoi, cells]);
+
+  // Outlines for everything that is not a point.
+  const outlineFeatures = useMemo(
+    () => (aoi ?? []).filter((f) => !f.properties.point_centres?.length),
+    [aoi],
   );
 
   const initialViewState = useMemo(() => {
@@ -105,17 +141,42 @@ export default function AssessmentHeatMap({ cells, aoi, height = 520 }: Props) {
       visible: showHeatmap,
       updateTriggers: { getFillColor: [maxCoverage] },
     }),
-    ...(aoi?.length
+    ...(outlineFeatures.length
       ? [
           new GeoJsonLayer({
             id: "aoi-outline",
-            data: aoi,
+            data: outlineFeatures,
             filled: false,
             stroked: true,
             getLineColor: [30, 45, 107, 220],
             getLineWidth: 2,
             lineWidthMinPixels: 2,
             lineWidthUnits: "pixels",
+          }),
+        ]
+      : []),
+    ...(pointData.length
+      ? [
+          new ScatterplotLayer<PointDatum>({
+            id: "aoi-points",
+            data: pointData,
+            getPosition: (d) => d.centre as [number, number],
+            // True radius in metres, floored at a few pixels so the marker is
+            // still legible at country-wide zoom.
+            radiusUnits: "meters",
+            getRadius: pointRadiusM,
+            radiusMinPixels: 5,
+            radiusMaxPixels: 400,
+            getFillColor: (d) =>
+              d.coverage > 0 && maxCoverage > 0 ? rampColor(d.coverage / maxCoverage) : EMPTY,
+            stroked: true,
+            getLineColor: [30, 45, 107, 220],
+            lineWidthUnits: "pixels",
+            getLineWidth: 1.5,
+            lineWidthMinPixels: 1.5,
+            pickable: true,
+            visible: showHeatmap,
+            updateTriggers: { getFillColor: [maxCoverage], getRadius: [pointRadiusM] },
           }),
         ]
       : []),

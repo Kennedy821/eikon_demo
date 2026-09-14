@@ -80,8 +80,15 @@ export type AoiFeature = Feature<AoiGeometry, AoiProperties>;
 
 export interface ParsedAoi {
   features: AoiFeature[];
-  /** Per-file notes worth surfacing (skipped non-polygon features, renamed duplicate ids). */
+  /** Per-file notes worth surfacing (skipped features, renamed duplicate ids). */
   warnings: string[];
+  /** How many features came from each non-polygon source type, e.g. { Point: 15 }. */
+  convertedCounts: Record<string, number>;
+}
+
+/** Points converted from any point-like source. */
+export function pointCount(counts: Record<string, number>): number {
+  return (counts.Point ?? 0) + (counts.MultiPoint ?? 0);
 }
 
 export class GeoJsonAoiError extends Error {}
@@ -368,14 +375,15 @@ export function parseGeoJsonFile(
     });
   });
 
+  // Point wording depends on the chosen buffer, so it is left to the caller;
+  // line conversion is fixed and reported here.
   converted.forEach((count, type) => {
+    if (type === "Point" || type === "MultiPoint") return;
     const label = CONVERTED_LABEL[type] ?? type;
     const plural = count === 1 ? "" : "s";
-    const how =
-      type === "Point" || type === "MultiPoint"
-        ? `assessed as ${POINT_RADIUS_M} m circle${plural}`
-        : `assessed at H3 resolution ${AOI_H3_RESOLUTION}`;
-    warnings.push(`${filename}: ${count} ${label}${plural} ${how}.`);
+    warnings.push(
+      `${filename}: ${count} ${label}${plural} assessed at H3 resolution ${AOI_H3_RESOLUTION}.`,
+    );
   });
   if (skipped > 0) {
     warnings.push(
@@ -385,7 +393,7 @@ export function parseGeoJsonFile(
   if (features.length === 0) {
     throw new GeoJsonAoiError(`${filename} contains no usable geometry.`);
   }
-  return { features, warnings };
+  return { features, warnings, convertedCounts: Object.fromEntries(converted) };
 }
 
 /**
@@ -395,10 +403,14 @@ export function parseGeoJsonFile(
 export function combineAoiFeatures(parsed: ParsedAoi[]): ParsedAoi {
   const features: AoiFeature[] = [];
   const warnings: string[] = [];
+  const convertedCounts: Record<string, number> = {};
   const seen = new Map<string, number>();
 
   for (const p of parsed) {
     warnings.push(...p.warnings);
+    for (const [type, n] of Object.entries(p.convertedCounts)) {
+      convertedCounts[type] = (convertedCounts[type] ?? 0) + n;
+    }
     for (const f of p.features) {
       const id = f.properties.unique_id;
       const n = seen.get(id) ?? 0;
@@ -412,7 +424,7 @@ export function combineAoiFeatures(parsed: ParsedAoi[]): ParsedAoi {
       }
     }
   }
-  return { features, warnings };
+  return { features, warnings, convertedCounts };
 }
 
 /** Build the payload the backend expects: gdf[["unique_id","geometry"]].to_json(). */
