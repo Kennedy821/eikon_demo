@@ -82,10 +82,10 @@ export function RemoteAssessmentTab() {
   const [aoiMode, setAoiMode] = useState(AREA_MODE);
   const [areaName, setAreaName] = useState((UK_AREAS as string[])[0] ?? "");
   const [aoi, setAoi] = useState<Feature<Polygon> | null>(null);
-  const [uploaded, setUploaded] = useState<AoiFeature[]>([]);
-  const [uploadWarnings, setUploadWarnings] = useState<string[]>([]);
-  const [uploadedPoints, setUploadedPoints] = useState(0);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  // The uploaded files are kept so the id column can be changed without
+  // re-uploading; features are re-derived whenever that choice changes.
+  const [uploadFiles, setUploadFiles] = useState<{ name: string; text: string }[]>([]);
+  const [idKey, setIdKey] = useState("");
   const [bufferM, setBufferM] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [inspection, setInspection] = useState("solar_panels");
@@ -109,6 +109,52 @@ export function RemoteAssessmentTab() {
   const isMapMode = aoiMode === MAP_MODE;
   const isUploadMode = aoiMode === UPLOAD_MODE;
   const aoiKm2 = useMemo(() => (aoi ? turfArea(aoi) / 1e6 : 0), [aoi]);
+  // Each uploaded file is parsed and concatenated, the equivalent of
+  // gp.read_file(...) per file followed by pd.concat.
+  async function onFilesChosen(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setIdKey("");
+    setUploadFiles(
+      await Promise.all(
+        Array.from(files).map(async (f) => ({ name: f.name, text: await f.text() })),
+      ),
+    );
+  }
+
+  function clearUpload() {
+    setUploadFiles([]);
+    setIdKey("");
+    setBufferM(0);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  const parsedUpload = useMemo(() => {
+    if (uploadFiles.length === 0) return null;
+    try {
+      const combined = combineAoiFeatures(
+        uploadFiles.map((f) => parseGeoJsonFile(f.text, f.name, idKey || null)),
+      );
+      return { ...combined, error: null as string | null };
+    } catch (err) {
+      return {
+        features: [] as AoiFeature[],
+        warnings: [] as string[],
+        convertedCounts: {} as Record<string, number>,
+        propertyKeys: [] as string[],
+        error:
+          err instanceof GeoJsonAoiError || err instanceof Error
+            ? err.message
+            : "Could not read that file.",
+      };
+    }
+  }, [uploadFiles, idKey]);
+
+  const uploaded = parsedUpload?.features ?? [];
+  const uploadWarnings = parsedUpload?.warnings ?? [];
+  const uploadError = parsedUpload?.error ?? null;
+  const uploadedPoints = pointCount(parsedUpload?.convertedCounts ?? {});
+  const idKeyOptions = parsedUpload?.propertyKeys ?? [];
+
   // What actually gets sent: the parsed features grown by the chosen buffer.
   const uploadedBuffered = useMemo(
     () => bufferAoiFeatures(uploaded, bufferM),
@@ -121,39 +167,6 @@ export function RemoteAssessmentTab() {
   const canSubmit =
     !isRunning && (!isMapMode || !!aoi) && (!isUploadMode || uploaded.length > 0);
 
-  // Each uploaded file is parsed and concatenated, the equivalent of
-  // gp.read_file(...) per file followed by pd.concat.
-  async function onFilesChosen(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    setUploadError(null);
-    try {
-      const parsed = await Promise.all(
-        Array.from(files).map(async (f) => parseGeoJsonFile(await f.text(), f.name)),
-      );
-      const combined = combineAoiFeatures(parsed);
-      setUploaded(combined.features);
-      setUploadWarnings(combined.warnings);
-      setUploadedPoints(pointCount(combined.convertedCounts));
-    } catch (err) {
-      setUploaded([]);
-      setUploadWarnings([]);
-      setUploadedPoints(0);
-      setUploadError(
-        err instanceof GeoJsonAoiError || err instanceof Error
-          ? err.message
-          : "Could not read that file.",
-      );
-    }
-  }
-
-  function clearUpload() {
-    setUploaded([]);
-    setUploadWarnings([]);
-    setUploadedPoints(0);
-    setUploadError(null);
-    setBufferM(0);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
 
   // Object classes present in the response, with detection counts. This is
   // the source of the heat-map dropdown — we only know what came back once
@@ -218,25 +231,15 @@ export function RemoteAssessmentTab() {
   // Every uploaded location is seeded first, so one with no rows for the
   // selected object still appears with zeros rather than vanishing from the
   // results — the count always matches what the user uploaded.
-  const locationStats = useMemo(() => {
-    type Stat = { cells: number; detected: number; objectAreaKm2: number; peak: number };
-    const byId: Record<string, Stat> = {};
-    for (const f of request?.uploaded ?? []) {
-      byId[f.properties.unique_id] = { cells: 0, detected: 0, objectAreaKm2: 0, peak: 0 };
-    }
-    for (const c of visibleCells) {
-      if (!c.uniqueId) continue;
-      const st = byId[c.uniqueId] ?? { cells: 0, detected: 0, objectAreaKm2: 0, peak: 0 };
-      st.cells += 1;
-      if (c.coverage > 0) st.detected += 1;
-      st.objectAreaKm2 += c.objectAreaKm2;
-      if (c.coverage > st.peak) st.peak = c.coverage;
-      byId[c.uniqueId] = st;
-    }
-    return Object.entries(byId)
-      .map(([uniqueId, st]) => ({ uniqueId, ...st }))
-      .sort((a, b) => b.objectAreaKm2 - a.objectAreaKm2 || a.uniqueId.localeCompare(b.uniqueId));
-  }, [visibleCells, request]);
+  const uploadedIds = useMemo(
+    () => (request?.uploaded ?? []).map((f) => f.properties.unique_id),
+    [request],
+  );
+
+  const locationStats = useMemo(
+    () => rollUpByLocation(visibleCells, uploadedIds),
+    [visibleCells, uploadedIds],
+  );
 
   const requestScope = request
     ? request.uploaded?.length
@@ -350,6 +353,24 @@ export function RemoteAssessmentTab() {
                   </div>
                 )}
 
+                {uploaded.length > 0 && idKeyOptions.length > 0 && (
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-eikon-muted">Location ID column</span>
+                    <select
+                      value={idKey}
+                      onChange={(e) => setIdKey(e.target.value)}
+                      className="w-full rounded border px-2 py-1.5"
+                    >
+                      <option value="">Automatic</option>
+                      {idKeyOptions.map((k) => (
+                        <option key={k} value={k}>
+                          {k}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
                 {uploaded.length > 0 && (
                   <label className="block text-sm">
                     <span className="mb-1 block text-eikon-muted">Buffer</span>
@@ -369,9 +390,8 @@ export function RemoteAssessmentTab() {
 
                 {uploadedPoints > 0 && (
                   <p className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
-                    {uploadedPoints} point{uploadedPoints === 1 ? "" : "s"} assessed as{" "}
-                    {bufferLabel(bufferM || POINT_RADIUS_M)} circle
-                    {uploadedPoints === 1 ? "" : "s"}.
+                    {uploadedPoints} point{uploadedPoints === 1 ? "" : "s"} assessed
+                    {bufferM > 0 ? ` · ${bufferLabel(bufferM)} buffer` : ""}
                   </p>
                 )}
 
@@ -447,7 +467,7 @@ export function RemoteAssessmentTab() {
             <div className="space-y-2 rounded-lg border p-4">
               <div className="flex justify-between text-sm">
                 <span className="text-eikon-midnight">
-                  {detail || progress > 0 ? "Assessing locations…" : "Starting assessment…"}
+                  {detail || progress > 0 ? "Assessing tiles…" : "Starting assessment…"}
                 </span>
                 <span className="font-semibold text-eikon-midnight">{progress}%</span>
               </div>
@@ -460,7 +480,7 @@ export function RemoteAssessmentTab() {
               {detail && (
                 <p className="text-xs text-eikon-muted">
                   {detail.locationsDone.toLocaleString()} of {detail.locationsTotal.toLocaleString()}{" "}
-                  locations
+                  tiles
                   {detail.etaSeconds !== null && detail.etaSeconds > 0
                     ? ` · about ${formatDuration(detail.etaSeconds)} remaining`
                     : ""}
@@ -526,7 +546,7 @@ export function RemoteAssessmentTab() {
                       >
                         {objectStats.map((o) => (
                           <option key={o.name} value={o.name}>
-                            {labelFor(o.name)} ({o.detected} of {o.assessed} cells)
+                            {labelFor(o.name)} ({o.detected} of {o.assessed} tiles)
                           </option>
                         ))}
                       </select>
@@ -537,7 +557,7 @@ export function RemoteAssessmentTab() {
                 {selectedObject && visibleCells.length > 0 && visibleCells.every((c) => c.coverage === 0) && (
                   <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
                     No {labelFor(selectedObject)} detected in the {visibleCells.length.toLocaleString()}{" "}
-                    cells assessed.
+                    tiles assessed.
                   </p>
                 )}
 
@@ -549,7 +569,12 @@ export function RemoteAssessmentTab() {
                   />
                 )}
                 {view === "By Location" && locationStats.length > 0 && (
-                  <LocationBreakdown stats={locationStats} objectName={selectedObject} />
+                  <LocationBreakdown
+                    stats={locationStats}
+                    objectName={selectedObject}
+                    allCells={cells}
+                    uploadedIds={uploadedIds}
+                  />
                 )}
                 {view === "Data Table" && (
                   <DataTable
@@ -558,6 +583,7 @@ export function RemoteAssessmentTab() {
                     objectName={selectedObject ?? "objects"}
                     objectCount={objectStats.length}
                     showUniqueId={locationStats.length > 0}
+                    uploadedIds={uploadedIds}
                   />
                 )}
               </div>
@@ -578,7 +604,7 @@ export function RemoteAssessmentTab() {
 function NoCellsState() {
   return (
     <div className="space-y-2 rounded-lg border border-dashed p-6 text-sm text-eikon-muted">
-      <p className="font-semibold text-eikon-midnight">No cells were returned for this area.</p>
+      <p className="font-semibold text-eikon-midnight">No tiles were returned for this area.</p>
     </div>
   );
 }
@@ -609,11 +635,11 @@ function AssessmentSummary({
       </h2>
       {requestLabel && <p className="text-xs text-eikon-muted">{requestLabel}</p>}
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <Stat label="Cells assessed" value={stats.assessed.toLocaleString()} />
-        <Stat label="Cells with detections" value={stats.detected.toLocaleString()} />
+        <Stat label="Tiles assessed" value={stats.assessed.toLocaleString()} />
+        <Stat label="Tiles with detections" value={stats.detected.toLocaleString()} />
         <Stat label="Area assessed" value={`${stats.assessedArea.toFixed(1)} km²`} />
         <Stat label="Object area found" value={`${stats.objectArea.toFixed(3)} km²`} />
-        <Stat label="Peak cell coverage" value={pct(stats.peak)} />
+        <Stat label="Peak tile coverage" value={pct(stats.peak)} />
         <Stat label="Mean coverage (detected)" value={pct(stats.mean)} />
       </dl>
     </div>
@@ -655,18 +681,48 @@ function downloadCsvFile(csv: string, filename: string) {
 }
 
 /** Per-uploaded-location rollup — one row per unique_id from the GeoJSON. */
+interface LocationStat {
+  uniqueId: string;
+  cells: number;
+  detected: number;
+  objectAreaKm2: number;
+  peak: number;
+}
+
+/** Roll cells up per location, seeding every uploaded id so none is missing. */
+function rollUpByLocation(cells: RemoteAssessmentCell[], seedIds: string[]): LocationStat[] {
+  const byId: Record<string, LocationStat> = {};
+  for (const id of seedIds) {
+    byId[id] = { uniqueId: id, cells: 0, detected: 0, objectAreaKm2: 0, peak: 0 };
+  }
+  for (const c of cells) {
+    if (!c.uniqueId) continue;
+    const st =
+      byId[c.uniqueId] ??
+      ({ uniqueId: c.uniqueId, cells: 0, detected: 0, objectAreaKm2: 0, peak: 0 } as LocationStat);
+    st.cells += 1;
+    if (c.coverage > 0) st.detected += 1;
+    st.objectAreaKm2 += c.objectAreaKm2;
+    if (c.coverage > st.peak) st.peak = c.coverage;
+    byId[c.uniqueId] = st;
+  }
+  return Object.values(byId).sort(
+    (a, b) => b.objectAreaKm2 - a.objectAreaKm2 || a.uniqueId.localeCompare(b.uniqueId),
+  );
+}
+
 function LocationBreakdown({
   stats,
   objectName,
+  allCells,
+  uploadedIds,
 }: {
-  stats: {
-    uniqueId: string;
-    cells: number;
-    detected: number;
-    objectAreaKm2: number;
-    peak: number;
-  }[];
+  stats: LocationStat[];
   objectName: string | null;
+  /** Every cell returned, across all object classes. */
+  allCells: RemoteAssessmentCell[];
+  /** Ids of every uploaded location, so none is missing from the export. */
+  uploadedIds: string[];
 }) {
   const totals = stats.reduce(
     (acc, s) => ({
@@ -677,18 +733,87 @@ function LocationBreakdown({
     { cells: 0, detected: 0, objectAreaKm2: 0 },
   );
 
+  const areaHeader = objectName ? `${labelFor(objectName)} area (km2)` : "object area (km2)";
+
+  const esc = (v: unknown) => {
+    const t = v === null || v === undefined ? "" : String(v);
+    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+
+  const statRow = (s: LocationStat) => [
+    s.uniqueId,
+    s.cells,
+    s.detected,
+    s.objectAreaKm2.toFixed(6),
+    s.peak.toFixed(6),
+  ];
+
+  // The table as shown: the selected object only.
+  function downloadCsv() {
+    const header = ["location", "tiles", "tiles_with_detections", areaHeader, "peak_tile_coverage"];
+    const lines = stats.map((s) => statRow(s).map(esc).join(","));
+    downloadCsvFile(
+      [header.map(esc).join(","), ...lines].join("\n"),
+      `eikon_remote_assessment_by_location_${objectName ?? "objects"}.csv`,
+    );
+  }
+
+  // Every object class the assessment returned, one row per location per
+  // class, with every uploaded location present even where nothing was found.
+  function downloadAllCsv() {
+    const objectNames = Array.from(new Set(allCells.map((c) => c.objectName))).sort();
+    const header = [
+      "location",
+      "object",
+      "tiles",
+      "tiles_with_detections",
+      "object_area_km2",
+      "peak_tile_coverage",
+    ];
+    const lines: string[] = [];
+    for (const name of objectNames) {
+      const rolled = rollUpByLocation(
+        allCells.filter((c) => c.objectName === name),
+        uploadedIds,
+      );
+      for (const s of rolled) {
+        const [loc, ...rest] = statRow(s);
+        lines.push([loc, name, ...rest].map(esc).join(","));
+      }
+    }
+    downloadCsvFile(
+      [header.map(esc).join(","), ...lines].join("\n"),
+      "eikon_remote_assessment_by_location_all.csv",
+    );
+  }
+
   return (
-    <div className="overflow-x-auto rounded-lg border">
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={downloadCsv}
+          className="rounded border px-4 py-2 text-sm text-eikon-midnight"
+        >
+          Download by location (CSV)
+        </button>
+        <button
+          onClick={downloadAllCsv}
+          className="rounded border px-4 py-2 text-sm text-eikon-midnight"
+        >
+          Download all data by location (CSV)
+        </button>
+      </div>
+      <div className="overflow-x-auto rounded-lg border">
       <table className="w-full text-sm">
         <thead className="bg-eikon-panel text-left text-eikon-midnight">
           <tr>
             <th className="whitespace-nowrap px-3 py-2">Location</th>
-            <th className="whitespace-nowrap px-3 py-2">Cells</th>
+            <th className="whitespace-nowrap px-3 py-2">Tiles</th>
             <th className="whitespace-nowrap px-3 py-2">With detections</th>
             <th className="whitespace-nowrap px-3 py-2">
               {objectName ? `${labelFor(objectName)} area (km²)` : "Object area (km²)"}
             </th>
-            <th className="whitespace-nowrap px-3 py-2">Peak cell coverage</th>
+            <th className="whitespace-nowrap px-3 py-2">Peak tile coverage</th>
           </tr>
         </thead>
         <tbody>
@@ -713,9 +838,48 @@ function LocationBreakdown({
             </tr>
           </tfoot>
         )}
-      </table>
+        </table>
+      </div>
     </div>
   );
+}
+
+/**
+ * A stand-in row for an uploaded location the backend returned nothing for.
+ * Without it such a location would vanish from the table entirely, so the row
+ * count would not match what was uploaded.
+ */
+function placeholderCell(uniqueId: string, objectName: string): RemoteAssessmentCell {
+  return {
+    locationId: "",
+    objectName,
+    coverage: 0,
+    lat: 0,
+    lon: 0,
+    cellAreaKm2: 0,
+    objectAreaKm2: 0,
+    meanModelConfidence: null,
+    uniqueId,
+    raw: {
+      unique_id: uniqueId,
+      name: objectName,
+      clean_pct_float: 0,
+      area_of_objects_found_km_2: 0,
+    },
+  };
+}
+
+/** Append a zero row for every uploaded location missing from `cells`. */
+function withMissingLocations(
+  cells: RemoteAssessmentCell[],
+  uploadedIds: string[],
+  objectName: string,
+): RemoteAssessmentCell[] {
+  if (uploadedIds.length === 0) return cells;
+  const present = new Set(cells.map((c) => c.uniqueId).filter(Boolean));
+  const missing = uploadedIds.filter((id) => !present.has(id));
+  if (missing.length === 0) return cells;
+  return [...cells, ...missing.map((id) => placeholderCell(id, objectName))];
 }
 
 function DataTable({
@@ -724,6 +888,7 @@ function DataTable({
   objectName,
   objectCount,
   showUniqueId,
+  uploadedIds,
 }: {
   cells: RemoteAssessmentCell[];
   /** Every cell returned by the assessment, across all object classes. */
@@ -732,22 +897,44 @@ function DataTable({
   objectCount: number;
   /** Uploaded-AOI jobs carry a unique_id per row; show it as the first column. */
   showUniqueId: boolean;
+  /** Ids of every uploaded location, so none is missing from the table. */
+  uploadedIds: string[];
 }) {
   const [detectedOnly, setDetectedOnly] = useState(true);
+
+  // Uploaded locations the backend returned no rows for still belong in the
+  // table at 0%, so turning off "Detections only" always shows every location.
+  const cellsWithMissing = useMemo(
+    () => withMissingLocations(cells, uploadedIds, objectName),
+    [cells, uploadedIds, objectName],
+  );
+
   const rows = useMemo(() => {
-    const filtered = detectedOnly ? cells.filter((c) => c.coverage > 0) : cells;
+    const filtered = detectedOnly
+      ? cellsWithMissing.filter((c) => c.coverage > 0)
+      : cellsWithMissing;
     return [...filtered].sort((a, b) => b.coverage - a.coverage);
-  }, [cells, detectedOnly]);
+  }, [cellsWithMissing, detectedOnly]);
 
   // The table's current view: selected object, honouring the detections filter.
   function downloadCsv() {
     downloadCsvFile(cellsToCsv(rows), `eikon_remote_assessment_${objectName}.csv`);
   }
 
+  const missingCount = cellsWithMissing.length - cells.length;
+
   // Everything the assessment returned: every cell, every object class,
   // regardless of the selected object or the detections filter.
   function downloadAllCsv() {
-    const sorted = [...allCells].sort(
+    const names = Array.from(new Set(allCells.map((c) => c.objectName))).sort();
+    const completed = names.flatMap((name) =>
+      withMissingLocations(
+        allCells.filter((c) => c.objectName === name),
+        uploadedIds,
+        name,
+      ),
+    );
+    const sorted = completed.sort(
       (a, b) => a.objectName.localeCompare(b.objectName) || b.coverage - a.coverage,
     );
     downloadCsvFile(cellsToCsv(sorted), "eikon_remote_assessment_all.csv");
@@ -774,7 +961,12 @@ function DataTable({
           />
           Detections only
         </label>
-        <span className="text-xs text-eikon-muted">{rows.length.toLocaleString()} rows</span>
+        <span className="text-xs text-eikon-muted">
+          {rows.length.toLocaleString()} rows
+          {!detectedOnly && missingCount > 0
+            ? ` · ${missingCount.toLocaleString()} with no result`
+            : ""}
+        </span>
       </div>
       {rows.length === 0 ? (
         <p className="text-sm text-eikon-muted">No rows to show.</p>
@@ -784,32 +976,43 @@ function DataTable({
             <thead className="sticky top-0 bg-eikon-panel text-left text-eikon-midnight">
               <tr>
                 {showUniqueId && <th className="whitespace-nowrap px-3 py-2">Location</th>}
-                <th className="whitespace-nowrap px-3 py-2">Cell (H3)</th>
+                <th className="whitespace-nowrap px-3 py-2">Tile</th>
                 <th className="whitespace-nowrap px-3 py-2">Object</th>
                 <th className="whitespace-nowrap px-3 py-2">Coverage</th>
                 <th className="whitespace-nowrap px-3 py-2">Model confidence</th>
                 <th className="whitespace-nowrap px-3 py-2">Object area (km²)</th>
-                <th className="whitespace-nowrap px-3 py-2">Cell area (km²)</th>
+                <th className="whitespace-nowrap px-3 py-2">Tile area (km²)</th>
                 <th className="whitespace-nowrap px-3 py-2">Lat</th>
                 <th className="whitespace-nowrap px-3 py-2">Lon</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((c) => (
-                <tr key={`${c.uniqueId ?? ""}-${c.locationId}-${c.objectName}`} className="border-t">
+                <tr
+                  key={`${c.uniqueId ?? ""}-${c.locationId || "none"}-${c.objectName}`}
+                  className="border-t"
+                >
                   {showUniqueId && (
                     <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
                       {c.uniqueId ?? ""}
                     </td>
                   )}
-                  <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{c.locationId}</td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
+                    {c.locationId || "—"}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-2">{labelFor(c.objectName)}</td>
                   <td className="whitespace-nowrap px-3 py-2">{pct(c.coverage, 2)}</td>
                   <td className="whitespace-nowrap px-3 py-2">{formatConfidence(c.meanModelConfidence)}</td>
                   <td className="whitespace-nowrap px-3 py-2">{c.objectAreaKm2.toFixed(4)}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{c.cellAreaKm2.toFixed(3)}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{c.lat.toFixed(5)}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{c.lon.toFixed(5)}</td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    {c.locationId ? c.cellAreaKm2.toFixed(3) : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    {c.locationId ? c.lat.toFixed(5) : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    {c.locationId ? c.lon.toFixed(5) : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>

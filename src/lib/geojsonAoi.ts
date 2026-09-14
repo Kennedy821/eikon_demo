@@ -84,6 +84,8 @@ export interface ParsedAoi {
   warnings: string[];
   /** How many features came from each non-polygon source type, e.g. { Point: 15 }. */
   convertedCounts: Record<string, number>;
+  /** Property names present on the uploaded features, for choosing the id column. */
+  propertyKeys: string[];
 }
 
 /** Points converted from any point-like source. */
@@ -352,7 +354,12 @@ export function parseGeoJsonFile(
   const warnings: string[] = [];
   const features: AoiFeature[] = [];
   const converted = new Map<string, number>();
+  const propertyKeys = new Set<string>();
   let skipped = 0;
+
+  for (const f of rawFeatures) {
+    Object.keys(f?.properties ?? {}).forEach((k) => propertyKeys.add(k));
+  }
 
   rawFeatures.forEach((f, i) => {
     const source = f?.geometry?.type;
@@ -393,7 +400,12 @@ export function parseGeoJsonFile(
   if (features.length === 0) {
     throw new GeoJsonAoiError(`${filename} contains no usable geometry.`);
   }
-  return { features, warnings, convertedCounts: Object.fromEntries(converted) };
+  return {
+    features,
+    warnings,
+    convertedCounts: Object.fromEntries(converted),
+    propertyKeys: Array.from(propertyKeys),
+  };
 }
 
 /**
@@ -404,10 +416,12 @@ export function combineAoiFeatures(parsed: ParsedAoi[]): ParsedAoi {
   const features: AoiFeature[] = [];
   const warnings: string[] = [];
   const convertedCounts: Record<string, number> = {};
+  const propertyKeys = new Set<string>();
   const seen = new Map<string, number>();
 
   for (const p of parsed) {
     warnings.push(...p.warnings);
+    p.propertyKeys.forEach((k) => propertyKeys.add(k));
     for (const [type, n] of Object.entries(p.convertedCounts)) {
       convertedCounts[type] = (convertedCounts[type] ?? 0) + n;
     }
@@ -424,7 +438,7 @@ export function combineAoiFeatures(parsed: ParsedAoi[]): ParsedAoi {
       }
     }
   }
-  return { features, warnings, convertedCounts };
+  return { features, warnings, convertedCounts, propertyKeys: Array.from(propertyKeys) };
 }
 
 /** Build the payload the backend expects: gdf[["unique_id","geometry"]].to_json(). */

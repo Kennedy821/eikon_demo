@@ -199,7 +199,7 @@ export default function AssessmentHeatMap({
           return {
             html: `<div style="font-family:sans-serif;font-size:12px;line-height:1.7">
               <strong>${c.locationId}</strong><br/>
-              ${labelFor(c.objectName)}: <strong>${pct(c.coverage, 2)}</strong> of cell<br/>
+              ${labelFor(c.objectName)}: <strong>${pct(c.coverage, 2)}</strong> of tile<br/>
               Model confidence: <strong>${formatConfidence(c.meanModelConfidence)}</strong><br/>
               Object area: ${c.objectAreaKm2.toFixed(4)} km²
             </div>`,
@@ -247,7 +247,7 @@ export default function AssessmentHeatMap({
       {/* Legend */}
       {showHeatmap && (
       <div className="absolute bottom-6 left-2 rounded-lg border bg-white/95 p-3 shadow-sm">
-        <div className="mb-2 text-xs font-bold text-eikon-midnight">Share of cell covered</div>
+        <div className="mb-2 text-xs font-bold text-eikon-midnight">Share of tile covered</div>
         {maxCoverage > 0 ? (
           <>
             <div
@@ -266,7 +266,7 @@ export default function AssessmentHeatMap({
             </div>
           </>
         ) : (
-          <p className="text-xs text-eikon-muted">No detections in the assessed cells.</p>
+          <p className="text-xs text-eikon-muted">No detections in the assessed tiles.</p>
         )}
         <div className="mt-2 flex items-center gap-2">
           <span
