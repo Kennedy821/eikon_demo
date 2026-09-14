@@ -152,6 +152,8 @@ export interface RemoteAssessmentCell {
   /** Mean detector confidence for this cell/object (backend `mean_model_confidence`), 0..1; null when not reported. */
   meanModelConfidence: number | null;
   areaName?: string;
+  /** Uploaded-AOI identifier (backend `unique_id`); set for custom geometry jobs. */
+  uniqueId?: string;
   raw: Record<string, unknown>;
 }
 

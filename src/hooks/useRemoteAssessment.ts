@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import type { Feature, Polygon } from "geojson";
 import { submitRemoteAssessment, getRemoteAssessmentStatus } from "@/lib/api";
+import { toGeodataframe, type AoiFeature } from "@/lib/geojsonAoi";
 import { POLL } from "@/lib/config";
 import { useAuth } from "./useAuth";
 import type { RemoteAssessmentCell, RemoteAssessmentProgressDetail } from "@/lib/types";
@@ -14,7 +15,12 @@ export interface RemoteAssessmentRequest {
   inspection: string;
   executionMode: "fast" | "standard";
   area?: string | null;
+  /** Single polygon drawn on the map. */
   aoi?: Feature<Polygon> | null;
+  /** Polygons from uploaded GeoJSON; each becomes one assessed location. */
+  uploaded?: AoiFeature[] | null;
+  /** Buffer applied to the uploaded geometry, in metres (0 = none). */
+  bufferM?: number;
 }
 
 const JOB_KEY = "eikon_active_remote_assessment_job";
@@ -69,18 +75,22 @@ export function useRemoteAssessment() {
 
   const submit = useMutation({
     mutationFn: async (request: RemoteAssessmentRequest) => {
-      const geodataframe = request.aoi
-        ? {
-            type: "FeatureCollection" as const,
-            features: [
-              {
-                type: "Feature" as const,
-                properties: { unique_id: "aoi_1" },
-                geometry: request.aoi.geometry,
-              },
-            ],
-          }
-        : undefined;
+      // Both custom-AOI modes send the same shape the SDK builds from
+      // gdf[["unique_id","geometry"]].to_json().
+      const geodataframe = request.uploaded?.length
+        ? toGeodataframe(request.uploaded)
+        : request.aoi
+          ? {
+              type: "FeatureCollection" as const,
+              features: [
+                {
+                  type: "Feature" as const,
+                  properties: { unique_id: "aoi_1" },
+                  geometry: request.aoi.geometry,
+                },
+              ],
+            }
+          : undefined;
       const res = await submitRemoteAssessment({
         apiKey: apiKey as string,
         inspection: request.inspection,

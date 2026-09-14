@@ -7,8 +7,8 @@ import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { GeoJsonLayer } from "@deck.gl/layers";
 import { Map } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Feature, Polygon } from "geojson";
 import type { RemoteAssessmentCell } from "@/lib/types";
+import { featureBounds, type AoiFeature } from "@/lib/geojsonAoi";
 import { BASEMAP_STYLE, type Basemap } from "@/components/map/basemaps";
 
 /**
@@ -63,8 +63,8 @@ function formatConfidence(v: number | null) {
 
 interface Props {
   cells: RemoteAssessmentCell[];
-  /** Drawn AOI outline (custom mode) — drawn on top for orientation. */
-  aoi?: Feature<Polygon> | null;
+  /** AOI outlines (drawn or uploaded) — drawn on top for orientation. */
+  aoi?: AoiFeature[] | null;
   height?: number;
 }
 
@@ -81,11 +81,9 @@ export default function AssessmentHeatMap({ cells, aoi, height = 520 }: Props) {
 
   const initialViewState = useMemo(() => {
     const pts = cells.filter((c) => c.lat !== 0 && c.lon !== 0);
-    if (pts.length === 0 && aoi) {
-      const ring = aoi.geometry.coordinates[0] ?? [];
-      const lons = ring.map((p) => p[0]);
-      const lats = ring.map((p) => p[1]);
-      return fit(Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats), height);
+    if (pts.length === 0 && aoi?.length) {
+      const b = featureBounds(aoi);
+      if (b) return fit(b.minLon, b.minLat, b.maxLon, b.maxLat, height);
     }
     if (pts.length === 0) return { longitude: -1.5, latitude: 53, zoom: 5.2 };
     const lats = pts.map((p) => p.lat);
@@ -107,7 +105,7 @@ export default function AssessmentHeatMap({ cells, aoi, height = 520 }: Props) {
       visible: showHeatmap,
       updateTriggers: { getFillColor: [maxCoverage] },
     }),
-    ...(aoi
+    ...(aoi?.length
       ? [
           new GeoJsonLayer({
             id: "aoi-outline",
@@ -142,7 +140,7 @@ export default function AssessmentHeatMap({ cells, aoi, height = 520 }: Props) {
               <strong>${c.locationId}</strong><br/>
               ${labelFor(c.objectName)}: <strong>${pct(c.coverage, 2)}</strong> of cell<br/>
               Model confidence: <strong>${formatConfidence(c.meanModelConfidence)}</strong><br/>
-              Object area: ${c.objectAreaKm2.toFixed(4)} km² &nbsp;·&nbsp; Cell: ${c.cellAreaKm2.toFixed(3)} km²
+              Object area: ${c.objectAreaKm2.toFixed(4)} km²
             </div>`,
             style: {
               background: "rgba(0,0,0,0.82)",

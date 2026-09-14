@@ -174,6 +174,8 @@ export function parseVerificationResult(raw: unknown): RemoteAssessmentCell[] {
         objectAreaKm2: toNumber(row.area_of_objects_found_km_2),
         meanModelConfidence: toOptionalNumber(row.mean_model_confidence),
         areaName: row.area_name !== undefined && row.area_name !== null ? String(row.area_name) : undefined,
+        uniqueId:
+          row.unique_id !== undefined && row.unique_id !== null ? String(row.unique_id) : undefined,
         raw: row,
       };
     })

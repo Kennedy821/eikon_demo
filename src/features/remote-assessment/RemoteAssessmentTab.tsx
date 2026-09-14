@@ -1,11 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { area as turfArea } from "@turf/turf";
 import type { Feature, Polygon } from "geojson";
 import { useRemoteAssessment } from "@/hooks/useRemoteAssessment";
 import type { RemoteAssessmentCell } from "@/lib/types";
+import {
+  parseGeoJsonFile,
+  combineAoiFeatures,
+  bufferAoiFeatures,
+  bufferLabel,
+  BUFFER_OPTIONS_M,
+  GeoJsonAoiError,
+  type AoiFeature,
+} from "@/lib/geojsonAoi";
 import UK_AREAS from "@/content/uk_areas.json";
 
 // deck.gl / maplibre touch `window` — client-only.
@@ -20,7 +29,8 @@ const PolygonDrawMap = dynamic(() => import("@/components/map/PolygonDrawMap"), 
 
 const AREA_MODE = "UK - area";
 const MAP_MODE = "Map selection";
-const AOI_MODES = [AREA_MODE, MAP_MODE];
+const UPLOAD_MODE = "GeoJSON upload";
+const AOI_MODES = [AREA_MODE, MAP_MODE, UPLOAD_MODE];
 const ALL_OBJECTS = "all";
 // Object classes the remote verification backend currently supports. Kept
 // deliberately short — the full DETECTABLE_OBJECTS list belongs to the
@@ -36,7 +46,7 @@ const OBJECT_OPTIONS = [
   "wind_turbine",
   "electricity_pylon",
 ];
-const RESULT_VIEWS = ["Heat Map", "Data Table"] as const;
+const RESULT_VIEWS = ["Heat Map", "By Location", "Data Table"] as const;
 type ResultView = (typeof RESULT_VIEWS)[number];
 
 // Above this, fast mode only samples the most likely cells rather than
@@ -70,6 +80,11 @@ export function RemoteAssessmentTab() {
   const [aoiMode, setAoiMode] = useState(AREA_MODE);
   const [areaName, setAreaName] = useState((UK_AREAS as string[])[0] ?? "");
   const [aoi, setAoi] = useState<Feature<Polygon> | null>(null);
+  const [uploaded, setUploaded] = useState<AoiFeature[]>([]);
+  const [uploadWarnings, setUploadWarnings] = useState<string[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [bufferM, setBufferM] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [inspection, setInspection] = useState("solar_panels");
   const [executionMode, setExecutionMode] = useState<"fast" | "standard">("fast");
   const [view, setView] = useState<ResultView>("Heat Map");
@@ -89,8 +104,50 @@ export function RemoteAssessmentTab() {
   } = useRemoteAssessment();
 
   const isMapMode = aoiMode === MAP_MODE;
+  const isUploadMode = aoiMode === UPLOAD_MODE;
   const aoiKm2 = useMemo(() => (aoi ? turfArea(aoi) / 1e6 : 0), [aoi]);
-  const canSubmit = !isRunning && (!isMapMode || !!aoi);
+  // What actually gets sent: the parsed features grown by the chosen buffer.
+  const uploadedBuffered = useMemo(
+    () => bufferAoiFeatures(uploaded, bufferM),
+    [uploaded, bufferM],
+  );
+  const uploadedKm2 = useMemo(
+    () => uploadedBuffered.reduce((sum, f) => sum + turfArea(f) / 1e6, 0),
+    [uploadedBuffered],
+  );
+  const canSubmit =
+    !isRunning && (!isMapMode || !!aoi) && (!isUploadMode || uploaded.length > 0);
+
+  // Each uploaded file is parsed and concatenated, the equivalent of
+  // gp.read_file(...) per file followed by pd.concat.
+  async function onFilesChosen(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploadError(null);
+    try {
+      const parsed = await Promise.all(
+        Array.from(files).map(async (f) => parseGeoJsonFile(await f.text(), f.name)),
+      );
+      const combined = combineAoiFeatures(parsed);
+      setUploaded(combined.features);
+      setUploadWarnings(combined.warnings);
+    } catch (err) {
+      setUploaded([]);
+      setUploadWarnings([]);
+      setUploadError(
+        err instanceof GeoJsonAoiError || err instanceof Error
+          ? err.message
+          : "Could not read that file.",
+      );
+    }
+  }
+
+  function clearUpload() {
+    setUploaded([]);
+    setUploadWarnings([]);
+    setUploadError(null);
+    setBufferM(0);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   // Object classes present in the response, with detection counts. This is
   // the source of the heat-map dropdown — we only know what came back once
@@ -129,13 +186,59 @@ export function RemoteAssessmentTab() {
     submit({
       inspection,
       executionMode,
-      area: isMapMode ? null : areaName,
+      area: isMapMode || isUploadMode ? null : areaName,
       aoi: isMapMode ? aoi : null,
+      uploaded: isUploadMode ? uploadedBuffered : null,
+      bufferM: isUploadMode ? bufferM : 0,
     });
   }
 
+  // Outlines for whichever custom AOI produced these results.
+  const aoiOutlines = useMemo<AoiFeature[] | null>(() => {
+    if (request?.uploaded?.length) return request.uploaded;
+    if (request?.aoi) {
+      return [
+        {
+          type: "Feature",
+          properties: { unique_id: "aoi_1" },
+          geometry: request.aoi.geometry,
+        },
+      ];
+    }
+    return null;
+  }, [request]);
+
+  // Per-location rollup for uploaded AOIs, keyed by the backend's unique_id.
+  const locationStats = useMemo(() => {
+    const byId = new Map<
+      string,
+      { cells: number; detected: number; objectAreaKm2: number; peak: number }
+    >();
+    for (const c of visibleCells) {
+      if (!c.uniqueId) continue;
+      const st = byId.get(c.uniqueId) ?? { cells: 0, detected: 0, objectAreaKm2: 0, peak: 0 };
+      st.cells += 1;
+      if (c.coverage > 0) st.detected += 1;
+      st.objectAreaKm2 += c.objectAreaKm2;
+      if (c.coverage > st.peak) st.peak = c.coverage;
+      byId.set(c.uniqueId, st);
+    }
+    return Array.from(byId.entries())
+      .map(([uniqueId, st]) => ({ uniqueId, ...st }))
+      .sort((a, b) => b.objectAreaKm2 - a.objectAreaKm2 || a.uniqueId.localeCompare(b.uniqueId));
+  }, [visibleCells]);
+
+  const requestScope = request
+    ? request.uploaded?.length
+      ? `${request.uploaded.length} uploaded location${request.uploaded.length === 1 ? "" : "s"}${
+          request.bufferM ? ` · ${bufferLabel(request.bufferM)} buffer` : ""
+        }`
+      : request.aoi
+        ? "drawn area"
+        : (request.area ?? "")
+    : "";
   const requestLabel = request
-    ? `${labelFor(request.inspection)} · ${request.aoi ? "drawn area" : request.area} · ${request.executionMode}`
+    ? `${labelFor(request.inspection)} · ${requestScope} · ${request.executionMode}`
     : null;
 
   return (
@@ -164,7 +267,7 @@ export function RemoteAssessmentTab() {
               </select>
             </label>
 
-            {!isMapMode && (
+            {!isMapMode && !isUploadMode && (
               <label className="block text-sm">
                 <span className="mb-1 block text-eikon-muted">Area</span>
                 <select
@@ -191,6 +294,74 @@ export function RemoteAssessmentTab() {
                     Fast mode will only assess part of an area this size.
                   </p>
                 )}
+              </div>
+            )}
+
+            {isUploadMode && (
+              <div className="space-y-2">
+                <label className="block text-sm">
+                  <span className="mb-1 block text-eikon-muted">GeoJSON file(s)</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".geojson,.json,application/geo+json,application/json"
+                    multiple
+                    onChange={(e) => onFilesChosen(e.target.files)}
+                    className="w-full rounded border px-2 py-1.5 text-sm file:mr-3 file:rounded file:border-0 file:bg-eikon-panel file:px-3 file:py-1 file:text-sm file:text-eikon-midnight"
+                  />
+                </label>
+
+                {uploadError && (
+                  <p className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">{uploadError}</p>
+                )}
+
+                {uploaded.length > 0 && (
+                  <div className="rounded border p-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-eikon-midnight">
+                        {uploaded.length.toLocaleString()} location
+                        {uploaded.length === 1 ? "" : "s"} · {uploadedKm2.toFixed(1)} km²
+                      </span>
+                      <button
+                        type="button"
+                        onClick={clearUpload}
+                        className="text-xs text-eikon-muted underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <ul className="mt-1 max-h-28 overflow-auto text-xs text-eikon-muted">
+                      {uploaded.map((f) => (
+                        <li key={f.properties.unique_id} className="truncate font-mono">
+                          {f.properties.unique_id}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {uploaded.length > 0 && (
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-eikon-muted">Buffer</span>
+                    <select
+                      value={bufferM}
+                      onChange={(e) => setBufferM(Number(e.target.value))}
+                      className="w-full rounded border px-2 py-1.5"
+                    >
+                      {BUFFER_OPTIONS_M.map((mtr) => (
+                        <option key={mtr} value={mtr}>
+                          {bufferLabel(mtr)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
+                {uploadWarnings.map((w) => (
+                  <p key={w} className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                    {w}
+                  </p>
+                ))}
               </div>
             )}
 
@@ -308,7 +479,9 @@ export function RemoteAssessmentTab() {
               <div className="space-y-4">
                 <div className="flex flex-wrap items-end justify-between gap-3 border-b">
                   <div className="flex gap-2">
-                    {RESULT_VIEWS.map((v) => (
+                    {RESULT_VIEWS.filter(
+                      (v) => v !== "By Location" || locationStats.length > 0,
+                    ).map((v) => (
                       <button
                         key={v}
                         onClick={() => setView(v)}
@@ -351,7 +524,10 @@ export function RemoteAssessmentTab() {
                 )}
 
                 {view === "Heat Map" && (
-                  <AssessmentHeatMap cells={visibleCells} aoi={request?.aoi ?? null} />
+                  <AssessmentHeatMap cells={visibleCells} aoi={aoiOutlines} />
+                )}
+                {view === "By Location" && locationStats.length > 0 && (
+                  <LocationBreakdown stats={locationStats} objectName={selectedObject} />
                 )}
                 {view === "Data Table" && (
                   <DataTable
@@ -359,6 +535,7 @@ export function RemoteAssessmentTab() {
                     allCells={cells}
                     objectName={selectedObject ?? "objects"}
                     objectCount={objectStats.length}
+                    showUniqueId={locationStats.length > 0}
                   />
                 )}
               </div>
@@ -455,17 +632,84 @@ function downloadCsvFile(csv: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+/** Per-uploaded-location rollup — one row per unique_id from the GeoJSON. */
+function LocationBreakdown({
+  stats,
+  objectName,
+}: {
+  stats: {
+    uniqueId: string;
+    cells: number;
+    detected: number;
+    objectAreaKm2: number;
+    peak: number;
+  }[];
+  objectName: string | null;
+}) {
+  const totals = stats.reduce(
+    (acc, s) => ({
+      cells: acc.cells + s.cells,
+      detected: acc.detected + s.detected,
+      objectAreaKm2: acc.objectAreaKm2 + s.objectAreaKm2,
+    }),
+    { cells: 0, detected: 0, objectAreaKm2: 0 },
+  );
+
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full text-sm">
+        <thead className="bg-eikon-panel text-left text-eikon-midnight">
+          <tr>
+            <th className="whitespace-nowrap px-3 py-2">Location</th>
+            <th className="whitespace-nowrap px-3 py-2">Cells</th>
+            <th className="whitespace-nowrap px-3 py-2">With detections</th>
+            <th className="whitespace-nowrap px-3 py-2">
+              {objectName ? `${labelFor(objectName)} area (km²)` : "Object area (km²)"}
+            </th>
+            <th className="whitespace-nowrap px-3 py-2">Peak cell coverage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {stats.map((s) => (
+            <tr key={s.uniqueId} className="border-t">
+              <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{s.uniqueId}</td>
+              <td className="whitespace-nowrap px-3 py-2">{s.cells.toLocaleString()}</td>
+              <td className="whitespace-nowrap px-3 py-2">{s.detected.toLocaleString()}</td>
+              <td className="whitespace-nowrap px-3 py-2">{s.objectAreaKm2.toFixed(4)}</td>
+              <td className="whitespace-nowrap px-3 py-2">{pct(s.peak, 2)}</td>
+            </tr>
+          ))}
+        </tbody>
+        {stats.length > 1 && (
+          <tfoot>
+            <tr className="border-t bg-eikon-panel font-semibold text-eikon-midnight">
+              <td className="whitespace-nowrap px-3 py-2">Total</td>
+              <td className="whitespace-nowrap px-3 py-2">{totals.cells.toLocaleString()}</td>
+              <td className="whitespace-nowrap px-3 py-2">{totals.detected.toLocaleString()}</td>
+              <td className="whitespace-nowrap px-3 py-2">{totals.objectAreaKm2.toFixed(4)}</td>
+              <td className="whitespace-nowrap px-3 py-2" />
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  );
+}
+
 function DataTable({
   cells,
   allCells,
   objectName,
   objectCount,
+  showUniqueId,
 }: {
   cells: RemoteAssessmentCell[];
   /** Every cell returned by the assessment, across all object classes. */
   allCells: RemoteAssessmentCell[];
   objectName: string;
   objectCount: number;
+  /** Uploaded-AOI jobs carry a unique_id per row; show it as the first column. */
+  showUniqueId: boolean;
 }) {
   const [detectedOnly, setDetectedOnly] = useState(true);
   const rows = useMemo(() => {
@@ -517,6 +761,7 @@ function DataTable({
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-eikon-panel text-left text-eikon-midnight">
               <tr>
+                {showUniqueId && <th className="whitespace-nowrap px-3 py-2">Location</th>}
                 <th className="whitespace-nowrap px-3 py-2">Cell (H3)</th>
                 <th className="whitespace-nowrap px-3 py-2">Object</th>
                 <th className="whitespace-nowrap px-3 py-2">Coverage</th>
@@ -529,7 +774,12 @@ function DataTable({
             </thead>
             <tbody>
               {rows.map((c) => (
-                <tr key={`${c.locationId}-${c.objectName}`} className="border-t">
+                <tr key={`${c.uniqueId ?? ""}-${c.locationId}-${c.objectName}`} className="border-t">
+                  {showUniqueId && (
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
+                      {c.uniqueId ?? ""}
+                    </td>
+                  )}
                   <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{c.locationId}</td>
                   <td className="whitespace-nowrap px-3 py-2">{labelFor(c.objectName)}</td>
                   <td className="whitespace-nowrap px-3 py-2">{pct(c.coverage, 2)}</td>
