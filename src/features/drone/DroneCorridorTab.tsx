@@ -155,7 +155,7 @@ export function DroneCorridorTab() {
           <button
             onClick={onAssess}
             disabled={isRunning || !validCriteria}
-            className="w-full rounded bg-eikon-orange px-4 py-2 text-white disabled:opacity-50"
+            className="w-full rounded bg-eikon-accent px-4 py-2 text-white disabled:opacity-50"
           >
             {isRunning ? "Assessing…" : "Assess Corridor"}
           </button>
@@ -334,7 +334,8 @@ function routeToDatum(r: DroneRoute): RouteDatum {
   const label = r.recommended ? "Recommended" : "Alternative";
   return {
     path: r.coords,
-    color: r.recommended ? [0, 128, 128, 220] : [255, 165, 0, 178],
+    // Recommended teal, alternatives midnight — distinct without using orange.
+    color: r.recommended ? [13, 148, 136, 220] : [30, 45, 107, 178],
     width: r.recommended ? 5 : 3,
     tooltip: `<div>${label} route (${r.percentile}th percentile)</div><div>Threshold: ${r.thresholdValue.toFixed(3)} | Length: ${r.routeLengthKm} km</div>`,
   };
@@ -532,11 +533,11 @@ function Legend({
           <div className="mt-2 border-t pt-2">
             <div className="mb-1 text-xs font-semibold text-eikon-midnight">Routes</div>
             <div className="mb-1 flex items-center gap-2">
-              <span className="inline-block h-1 w-4 rounded-full" style={{ background: "rgb(0,128,128)" }} />
+              <span className="inline-block h-1 w-4 rounded-full" style={{ background: "rgb(13,148,136)" }} />
               <span className="text-xs text-eikon-muted">Recommended</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="inline-block h-1 w-4 rounded-full" style={{ background: "rgb(255,165,0)" }} />
+              <span className="inline-block h-1 w-4 rounded-full" style={{ background: "rgb(30,45,107)" }} />
               <span className="text-xs text-eikon-muted">Alternative</span>
             </div>
           </div>

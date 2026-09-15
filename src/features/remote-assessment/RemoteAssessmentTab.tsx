@@ -47,6 +47,8 @@ const OBJECT_OPTIONS = [
   "tennis_court",
   "wind_turbine",
   "electricity_pylon",
+  "residential_buildings",
+  "agricultural_land",
 ];
 const RESULT_VIEWS = ["Heat Map", "By Location", "Data Table"] as const;
 type ResultView = (typeof RESULT_VIEWS)[number];
@@ -435,7 +437,7 @@ export function RemoteAssessmentTab() {
               <button
                 type="submit"
                 disabled={!canSubmit}
-                className="flex-1 rounded bg-eikon-orange px-4 py-2 text-white disabled:opacity-50"
+                className="flex-1 rounded bg-eikon-accent px-4 py-2 text-white disabled:opacity-50"
               >
                 {isRunning ? "Assessing…" : "Run assessment"}
               </button>
@@ -473,7 +475,7 @@ export function RemoteAssessmentTab() {
               </div>
               <div className="h-2 w-full overflow-hidden rounded bg-eikon-panel">
                 <div
-                  className="h-full bg-eikon-orange transition-all duration-500"
+                  className="h-full bg-eikon-accent transition-all duration-500"
                   style={{ width: `${progress}%` }}
                 />
               </div>

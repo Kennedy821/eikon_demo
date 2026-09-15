@@ -147,7 +147,7 @@ export function ChatTab() {
           <button
             type="submit"
             disabled={!input.trim()}
-            className="rounded-lg bg-eikon-orange px-6 py-3 font-medium text-white disabled:opacity-50"
+            className="rounded-lg bg-eikon-accent px-6 py-3 font-medium text-white disabled:opacity-50"
           >
             Send
           </button>

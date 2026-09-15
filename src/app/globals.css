@@ -4,7 +4,7 @@
 
 :root {
   --eikon-teal: #0d9488;
-  --eikon-orange: #ea580c;
+  --eikon-accent: #0e7490;
   --eikon-midnight: #1e2d6b;
   --eikon-muted: #64748b;
 }
@@ -17,6 +17,29 @@ body {
 body {
   @apply bg-white text-gray-900 antialiased;
   font-family: var(--font-inter), "Helvetica Neue", Arial, sans-serif;
+}
+
+/*
+ * Brand accent utilities.
+ *
+ * `eikon.accent` is also declared in tailwind.config.ts, but Tailwind only
+ * reloads its config when the dev server restarts, so these are written out
+ * explicitly here from the same CSS variable. Both produce the identical
+ * declaration, so nothing conflicts once the config is picked up.
+ */
+@layer utilities {
+  .bg-eikon-accent {
+    background-color: var(--eikon-accent);
+  }
+  .text-eikon-accent {
+    color: var(--eikon-accent);
+  }
+  .border-eikon-accent {
+    border-color: var(--eikon-accent);
+  }
+  .hover\:bg-eikon-accent:hover {
+    background-color: var(--eikon-accent);
+  }
 }
 
 /* Horizontal-scroll tab strip: hide the scrollbar but keep scrollability. */

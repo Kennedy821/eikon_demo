@@ -221,7 +221,7 @@ function LocationCard({
               isRecommended === true
                 ? "bg-green-50 text-green-800"
                 : isRecommended === false
-                  ? "bg-orange-50 text-orange-800"
+                  ? "bg-red-50 text-red-800"
                   : "bg-eikon-panel"
             }`}
           >
@@ -321,7 +321,7 @@ function MoreLikeThis({
           type="button"
           onClick={() => similar.mutate()}
           disabled={similar.isPending || !isValidCell(loc.locationId)}
-          className="rounded bg-eikon-orange px-4 py-2 text-sm text-white disabled:opacity-50"
+          className="rounded bg-eikon-accent px-4 py-2 text-sm text-white disabled:opacity-50"
         >
           {similar.isPending ? "Finding similar locations…" : "✨ More like this"}
         </button>

@@ -195,7 +195,7 @@ function LocationCard({ loc }: { loc: SearchResult }) {
               isRecommended === true
                 ? "bg-green-50 text-green-800"
                 : isRecommended === false
-                  ? "bg-orange-50 text-orange-800"
+                  ? "bg-red-50 text-red-800"
                   : "bg-eikon-panel"
             }`}
           >

@@ -26,12 +26,13 @@ const BASEMAP_ORDER: Basemap[] = ["Light", "Dark", "Satellite"];
 
 type RGBA = [number, number, number, number];
 
-// Sequential yellow → orange → deep brown ramp (ColorBrewer YlOrBr-like).
+// Sequential light-to-dark teal, matching the brand accent. Lightness falls
+// monotonically across the stops so the ramp still reads as an ordered scale.
 const RAMP: [number, number, number][] = [
-  [255, 247, 188],
-  [254, 196, 79],
-  [236, 112, 20],
-  [153, 52, 4],
+  [224, 247, 250],
+  [128, 214, 226],
+  [38, 150, 172],
+  [11, 78, 96],
 ];
 const EMPTY: RGBA = [148, 163, 184, 60];
 
@@ -224,7 +225,7 @@ export default function AssessmentHeatMap({
           aria-pressed={showHeatmap}
           title={showHeatmap ? "Hide heat map layer" : "Show heat map layer"}
           className={`rounded px-2 py-0.5 text-xs ${
-            showHeatmap ? "bg-eikon-orange text-white" : "text-eikon-midnight hover:bg-eikon-panel"
+            showHeatmap ? "bg-eikon-accent text-white" : "text-eikon-midnight hover:bg-eikon-panel"
           }`}
         >
           Heat map {showHeatmap ? "on" : "off"}

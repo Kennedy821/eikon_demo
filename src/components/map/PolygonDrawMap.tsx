@@ -156,7 +156,7 @@ export default function PolygonDrawMap({
             onClick={() => pick(t.key)}
             className={`rounded border px-2.5 py-1 text-xs font-medium shadow-sm transition-colors disabled:opacity-50 ${
               mode === t.key
-                ? "border-eikon-orange bg-eikon-orange text-white"
+                ? "border-eikon-accent bg-eikon-accent text-white"
                 : "border-gray-300 bg-white text-eikon-midnight hover:bg-eikon-panel"
             }`}
           >

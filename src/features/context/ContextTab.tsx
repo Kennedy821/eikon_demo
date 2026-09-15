@@ -171,7 +171,7 @@ export function ContextTab() {
           <button
             type="submit"
             disabled={ctx.isPending || !hasLocation}
-            className="w-full rounded bg-eikon-orange px-4 py-2 text-white disabled:opacity-50"
+            className="w-full rounded bg-eikon-accent px-4 py-2 text-white disabled:opacity-50"
           >
             {ctx.isPending ? "Analysing…" : "Analyze location"}
           </button>
