@@ -18,6 +18,7 @@ import {
   type AoiFeature,
 } from "@/lib/geojsonAoi";
 import UK_AREAS from "@/content/uk_areas.json";
+import { ALL_OBJECTS, OBJECT_OPTIONS } from "@/lib/remoteInspection";
 
 // deck.gl / maplibre touch `window` — client-only.
 const AssessmentHeatMap = dynamic(() => import("./AssessmentHeatMap"), {
@@ -33,29 +34,18 @@ const AREA_MODE = "UK - area";
 const MAP_MODE = "Map selection";
 const UPLOAD_MODE = "GeoJSON upload";
 const AOI_MODES = [AREA_MODE, MAP_MODE, UPLOAD_MODE];
-const ALL_OBJECTS = "all";
-// Object classes the remote verification backend currently supports. Kept
-// deliberately short — the full DETECTABLE_OBJECTS list belongs to the
-// per-tile object-detection endpoint, not this one.
-const OBJECT_OPTIONS = [
-  "solar_panels",
-  "industrial_buildings",
-  "motorway",
-  "railway_line",
-  "lake",
-  "parking_lot",
-  "tennis_court",
-  "wind_turbine",
-  "electricity_pylon",
-  "residential_buildings",
-  "agricultural_land",
-];
+// Object classes live in src/lib/remoteInspection.ts so the Admin Tools cost
+// calculator and this tab can never drift apart.
 const RESULT_VIEWS = ["Heat Map", "By Location", "Data Table"] as const;
 type ResultView = (typeof RESULT_VIEWS)[number];
 
 // Above this, fast mode only samples the most likely cells rather than
 // covering every cell in the AOI.
 const FAST_MODE_FULL_COVERAGE_KM2 = 300;
+
+// Fast mode exists to keep a large batch of points tractable. At or below this
+// many uploaded points standard is quick enough, so fast is not offered.
+const FAST_MODE_MIN_POINTS = 200;
 
 function labelFor(objectName: string) {
   return objectName === ALL_OBJECTS ? "All objects" : objectName.replace(/_/g, " ");
@@ -168,6 +158,15 @@ export function RemoteAssessmentTab() {
   );
   const canSubmit =
     !isRunning && (!isMapMode || !!aoi) && (!isUploadMode || uploaded.length > 0);
+
+  // Fast only applies to a large batch of uploaded points. Every other route —
+  // map selection, a named UK area, an upload of polygons or lines — keeps both
+  // modes on offer.
+  const canUseFast = uploadedPoints === 0 || uploadedPoints > FAST_MODE_MIN_POINTS;
+
+  useEffect(() => {
+    if (!canUseFast && executionMode !== "standard") setExecutionMode("standard");
+  }, [canUseFast, executionMode]);
 
 
   // Object classes present in the response, with detection counts. This is
@@ -428,7 +427,7 @@ export function RemoteAssessmentTab() {
                 onChange={(e) => setExecutionMode(e.target.value as "fast" | "standard")}
                 className="w-full rounded border px-2 py-1.5"
               >
-                <option value="fast">Fast</option>
+                {canUseFast && <option value="fast">Fast</option>}
                 <option value="standard">Standard</option>
               </select>
             </label>
@@ -625,9 +624,9 @@ function AssessmentSummary({
     const detected = cells.filter((c) => c.coverage > 0);
     const objectArea = detected.reduce((s, c) => s + c.objectAreaKm2, 0);
     const assessedArea = cells.reduce((s, c) => s + c.cellAreaKm2, 0);
-    const peak = detected.reduce((m, c) => (c.coverage > m ? c.coverage : m), 0);
+    const share = assessedArea > 0 ? objectArea / assessedArea : 0;
     const mean = detected.length ? detected.reduce((s, c) => s + c.coverage, 0) / detected.length : 0;
-    return { assessed, detected: detected.length, objectArea, assessedArea, peak, mean };
+    return { assessed, detected: detected.length, objectArea, assessedArea, share, mean };
   }, [cells]);
 
   return (
@@ -641,7 +640,7 @@ function AssessmentSummary({
         <Stat label="Tiles with detections" value={stats.detected.toLocaleString()} />
         <Stat label="Area assessed" value={`${stats.assessedArea.toFixed(1)} km²`} />
         <Stat label="Object area found" value={`${stats.objectArea.toFixed(3)} km²`} />
-        <Stat label="Peak tile coverage" value={pct(stats.peak)} />
+        <Stat label="Share of area covered" value={pct(stats.share)} />
         <Stat label="Mean coverage (detected)" value={pct(stats.mean)} />
       </dl>
     </div>
@@ -688,24 +687,35 @@ interface LocationStat {
   cells: number;
   detected: number;
   objectAreaKm2: number;
-  peak: number;
+  assessedAreaKm2: number;
+}
+
+/**
+ * Share of a location's assessed area that is the object. The same figure the
+ * map colours a point circle by, so the table and the map always agree.
+ */
+function shareOfArea(s: { objectAreaKm2: number; assessedAreaKm2: number }): number {
+  return s.assessedAreaKm2 > 0 ? s.objectAreaKm2 / s.assessedAreaKm2 : 0;
 }
 
 /** Roll cells up per location, seeding every uploaded id so none is missing. */
 function rollUpByLocation(cells: RemoteAssessmentCell[], seedIds: string[]): LocationStat[] {
   const byId: Record<string, LocationStat> = {};
-  for (const id of seedIds) {
-    byId[id] = { uniqueId: id, cells: 0, detected: 0, objectAreaKm2: 0, peak: 0 };
-  }
+  const blank = (id: string): LocationStat => ({
+    uniqueId: id,
+    cells: 0,
+    detected: 0,
+    objectAreaKm2: 0,
+    assessedAreaKm2: 0,
+  });
+  for (const id of seedIds) byId[id] = blank(id);
   for (const c of cells) {
     if (!c.uniqueId) continue;
-    const st =
-      byId[c.uniqueId] ??
-      ({ uniqueId: c.uniqueId, cells: 0, detected: 0, objectAreaKm2: 0, peak: 0 } as LocationStat);
+    const st = byId[c.uniqueId] ?? blank(c.uniqueId);
     st.cells += 1;
     if (c.coverage > 0) st.detected += 1;
     st.objectAreaKm2 += c.objectAreaKm2;
-    if (c.coverage > st.peak) st.peak = c.coverage;
+    st.assessedAreaKm2 += c.cellAreaKm2;
     byId[c.uniqueId] = st;
   }
   return Object.values(byId).sort(
@@ -731,8 +741,9 @@ function LocationBreakdown({
       cells: acc.cells + s.cells,
       detected: acc.detected + s.detected,
       objectAreaKm2: acc.objectAreaKm2 + s.objectAreaKm2,
+      assessedAreaKm2: acc.assessedAreaKm2 + s.assessedAreaKm2,
     }),
-    { cells: 0, detected: 0, objectAreaKm2: 0 },
+    { cells: 0, detected: 0, objectAreaKm2: 0, assessedAreaKm2: 0 },
   );
 
   const areaHeader = objectName ? `${labelFor(objectName)} area (km2)` : "object area (km2)";
@@ -747,12 +758,20 @@ function LocationBreakdown({
     s.cells,
     s.detected,
     s.objectAreaKm2.toFixed(6),
-    s.peak.toFixed(6),
+    s.assessedAreaKm2.toFixed(6),
+    shareOfArea(s).toFixed(6),
   ];
 
   // The table as shown: the selected object only.
   function downloadCsv() {
-    const header = ["location", "tiles", "tiles_with_detections", areaHeader, "peak_tile_coverage"];
+    const header = [
+      "location",
+      "tiles",
+      "tiles_with_detections",
+      areaHeader,
+      "assessed_area_km2",
+      "share_of_area_covered",
+    ];
     const lines = stats.map((s) => statRow(s).map(esc).join(","));
     downloadCsvFile(
       [header.map(esc).join(","), ...lines].join("\n"),
@@ -770,7 +789,8 @@ function LocationBreakdown({
       "tiles",
       "tiles_with_detections",
       "object_area_km2",
-      "peak_tile_coverage",
+      "assessed_area_km2",
+      "share_of_area_covered",
     ];
     const lines: string[] = [];
     for (const name of objectNames) {
@@ -815,7 +835,7 @@ function LocationBreakdown({
             <th className="whitespace-nowrap px-3 py-2">
               {objectName ? `${labelFor(objectName)} area (km²)` : "Object area (km²)"}
             </th>
-            <th className="whitespace-nowrap px-3 py-2">Peak tile coverage</th>
+            <th className="whitespace-nowrap px-3 py-2">Share of area covered</th>
           </tr>
         </thead>
         <tbody>
@@ -825,7 +845,7 @@ function LocationBreakdown({
               <td className="whitespace-nowrap px-3 py-2">{s.cells.toLocaleString()}</td>
               <td className="whitespace-nowrap px-3 py-2">{s.detected.toLocaleString()}</td>
               <td className="whitespace-nowrap px-3 py-2">{s.objectAreaKm2.toFixed(4)}</td>
-              <td className="whitespace-nowrap px-3 py-2">{pct(s.peak, 2)}</td>
+              <td className="whitespace-nowrap px-3 py-2">{pct(shareOfArea(s), 2)}</td>
             </tr>
           ))}
         </tbody>
@@ -836,7 +856,7 @@ function LocationBreakdown({
               <td className="whitespace-nowrap px-3 py-2">{totals.cells.toLocaleString()}</td>
               <td className="whitespace-nowrap px-3 py-2">{totals.detected.toLocaleString()}</td>
               <td className="whitespace-nowrap px-3 py-2">{totals.objectAreaKm2.toFixed(4)}</td>
-              <td className="whitespace-nowrap px-3 py-2" />
+              <td className="whitespace-nowrap px-3 py-2">{pct(shareOfArea(totals), 2)}</td>
             </tr>
           </tfoot>
         )}

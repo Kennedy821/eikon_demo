@@ -32,7 +32,7 @@ import {
   latLngToCell,
   polygonToCells,
 } from "h3-js";
-import { circle as turfCircle } from "@turf/turf";
+import { area as turfArea, circle as turfCircle } from "@turf/turf";
 
 /**
  * Points and lines are geocoded to H3 cells and assessed as those cells'
@@ -451,6 +451,21 @@ export function toGeodataframe(features: AoiFeature[]) {
       geometry: f.geometry,
     })),
   };
+}
+
+/**
+ * How many tiles an AOI covers. Enumerates cells exactly, which is what
+ * matters for a cost estimate, but short-circuits for an AOI so large that
+ * enumerating it at resolution 9 would be slow and the answer is obviously
+ * "very many".
+ */
+export function countAoiTiles(features: AoiFeature[]): number {
+  if (features.length === 0) return 0;
+  const areaKm2 = features.reduce((sum, f) => sum + turfArea(f) / 1e6, 0);
+  if (areaKm2 / 0.1053 > 50_000) return Number.POSITIVE_INFINITY;
+  const cells = new Set<string>();
+  for (const f of features) geometryCells(f.geometry).forEach((c) => cells.add(c));
+  return cells.size;
 }
 
 /** Rough lon/lat bounds across features, for map framing. */

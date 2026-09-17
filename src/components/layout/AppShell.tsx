@@ -6,9 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCredits, formatCredits } from "@/hooks/useCredits";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 
 /** Top-level tabs — mirror active_main_tab options in eikon_demo_app_beta.py. */
-const TABS = [
+const TABS: readonly { href: string; label: string; adminOnly?: boolean }[] = [
   { href: "/chat", label: "Eikon AI" },
   { href: "/search", label: "Search" },
   { href: "/context", label: "Context" },
@@ -20,13 +21,16 @@ const TABS = [
   { href: "/memory", label: "Memory" },
   { href: "/history", label: "History" },
   { href: "/docs", label: "Docs" },
-] as const;
+  { href: "/admin-tools", label: "Admin Tools", adminOnly: true },
+];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { authenticated, hydrated, userEmail, logout } = useAuth();
   const { data: credits } = useCredits();
+  const isAdmin = useIsAdmin();
+  const tabs = TABS.filter((t) => !t.adminOnly || isAdmin);
 
   useEffect(() => {
     if (hydrated && !authenticated) router.replace("/login");
@@ -70,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           reachable via swipe; a right-edge fade hints there's more to scroll. */}
       <div className="relative border-b">
         <nav className="scrollbar-hide flex gap-6 overflow-x-auto whitespace-nowrap px-4 sm:px-6">
-          {TABS.map((t) => {
+          {tabs.map((t) => {
             const active = pathname === t.href;
             return (
               <Link
