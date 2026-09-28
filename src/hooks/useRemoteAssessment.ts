@@ -25,6 +25,9 @@ export interface RemoteAssessmentRequest {
 
 const JOB_KEY = "eikon_active_remote_assessment_job";
 
+/** Consecutive status-poll failures tolerated before the run is called dead. */
+const POLL_FAILURES_BEFORE_ERROR = 3;
+
 interface StoredJob {
   jobId: string;
   request: RemoteAssessmentRequest;
@@ -67,6 +70,7 @@ export function useRemoteAssessment() {
   const lastProgressRef = useRef(0);
   const lastDetailRef = useRef<RemoteAssessmentProgressDetail | null>(null);
   useEffect(() => {
+    setPollFailures(0);
     if (!job) {
       lastProgressRef.current = 0;
       lastDetailRef.current = null;
@@ -108,25 +112,51 @@ export function useRemoteAssessment() {
 
   const jobId = job?.jobId ?? null;
 
+  // TanStack resets its own failure count at the start of every fetch, so with
+  // retry:false it never climbs above 1. Count consecutive poll failures here
+  // instead, resetting whenever a poll succeeds.
+  const [pollFailures, setPollFailures] = useState(0);
+
   const status = useQuery({
     queryKey: ["remote-assessment-status", jobId],
     queryFn: () => getRemoteAssessmentStatus(apiKey as string, jobId as string),
     enabled: !!jobId && !!apiKey,
     refetchInterval: (query) => {
       const s = query.state.data?.status;
-      return s === "completed" || s === "failed" ? false : POLL.remoteAssessmentStatus;
+      if (s === "completed" || s === "failed") return false;
+      // Give up once the endpoint has failed repeatedly, rather than polling a
+      // dead server indefinitely.
+      if (pollFailures >= POLL_FAILURES_BEFORE_ERROR) return false;
+      return POLL.remoteAssessmentStatus;
     },
     // TanStack pauses interval refetches while the tab is in the background
     // by default. A multi-minute assessment is exactly when users switch away,
     // and the progress bar must keep tracking the backend while they do.
     refetchIntervalInBackground: true,
-    // Transient poll failures during a long job are not fatal.
+    // Transient poll failures during a long job are not fatal; a run of them
+    // is, and is handled below via failureCount.
     retry: false,
   });
 
   const isComplete = status.data?.status === "completed";
   const isFailed = status.data?.status === "failed";
-  const isRunning = submit.isPending || (!!jobId && !isComplete && !isFailed);
+
+  // A status endpoint that keeps failing must not leave the user on a progress
+  // bar forever. One or two failures are transient during a long run; several
+  // consecutive ones mean the answer is not coming back.
+  const pollFailed = !!jobId && pollFailures >= POLL_FAILURES_BEFORE_ERROR;
+
+  // errorUpdatedAt / dataUpdatedAt change once per failed / successful fetch.
+  const { isError: pollIsError, errorUpdatedAt, isSuccess: pollIsSuccess, dataUpdatedAt } = status;
+  useEffect(() => {
+    if (pollIsError) setPollFailures((n) => n + 1);
+  }, [pollIsError, errorUpdatedAt]);
+  useEffect(() => {
+    if (pollIsSuccess) setPollFailures(0);
+  }, [pollIsSuccess, dataUpdatedAt]);
+
+  const isRunning =
+    submit.isPending || (!!jobId && !isComplete && !isFailed && !pollFailed);
 
   // Latest structured progress (locations done / total / ETA); kept across
   // transient poll failures so the panel never blanks mid-run.
@@ -142,9 +172,13 @@ export function useRemoteAssessment() {
 
   const error =
     submit.error ??
-    (isFailed ? new Error(status.data?.error ?? "Assessment failed") : null);
+    (isFailed ? new Error(status.data?.error ?? "Assessment failed") : null) ??
+    (pollFailed
+      ? (status.error ?? new Error("Lost contact with the assessment server."))
+      : null);
 
   function reset() {
+    setPollFailures(0);
     setJob(null);
     lastProgressRef.current = 0;
     lastDetailRef.current = null;
@@ -160,7 +194,7 @@ export function useRemoteAssessment() {
     isComplete,
     progress,
     detail,
-    note: status.data?.note ?? null,
+    note: isRunning ? (status.data?.note ?? null) : null,
     cells,
     error,
   };

@@ -506,9 +506,27 @@ export function RemoteAssessmentTab() {
         {/* ---- Right: results ---- */}
         <div className="min-w-0">
           {error && (
-            <p className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error instanceof Error ? error.message : "Assessment failed"}
-            </p>
+            <div className="mb-3 space-y-2 rounded border border-red-200 bg-red-50 px-3 py-3">
+              <p className="text-sm font-semibold text-red-800">
+                We could not process this assessment.
+              </p>
+              <p className="text-sm text-red-700">
+                Reset and try again. If it keeps failing, the server may be busy — please try
+                again later.
+              </p>
+              {/* The raw message is kept, in smaller type, because it is what
+                  makes a support conversation possible. */}
+              <p className="text-xs text-red-600">
+                {error instanceof Error ? error.message : "Assessment failed"}
+              </p>
+              <button
+                type="button"
+                onClick={reset}
+                className="rounded border border-red-300 bg-white px-3 py-1.5 text-sm text-red-800"
+              >
+                Reset
+              </button>
+            </div>
           )}
 
           {isComplete ? (

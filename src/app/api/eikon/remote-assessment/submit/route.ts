@@ -79,13 +79,15 @@ export async function POST(req: NextRequest) {
           const data = body as { eikon_remote_location_verification_result?: unknown } | null;
           entry.rows = parseVerificationResult(data?.eikon_remote_location_verification_result);
         } else {
-          // A 4xx means the backend rejected the request outright — the poll
-          // will never complete. A 5xx/gateway drop can still be rescued by
-          // the completion endpoint (the job keeps running server-side).
+          // A 4xx, or a 500 from the application itself, means the request was
+          // rejected and the poll will never complete — fail fast.
+          // A 502/503/504 is the gateway, not the app: the job may still be
+          // running server-side, so leave it to the poll to rescue.
           const text = typeof body === "string" ? body : JSON.stringify(body ?? "");
+          const gatewayError = status === 502 || status === 503 || status === 504;
           entry.error = {
             message: `Backend returned ${status}: ${text.slice(0, 200)}`,
-            fatal: status >= 400 && status < 500,
+            fatal: status >= 400 && !gatewayError,
           };
         }
         cache.set(jobId, entry);

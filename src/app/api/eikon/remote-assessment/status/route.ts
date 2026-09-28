@@ -97,6 +97,12 @@ export async function POST(req: NextRequest) {
       progress,
       detail,
       latestCkpt: String(data?.latest_ckpt ?? ""),
+      // The trigger call failed but the backend may still be working, so the
+      // job is not declared dead yet. Say so rather than showing a clean
+      // progress bar that implies all is well.
+      note: cached?.error
+        ? "The server reported a problem starting this assessment. Still waiting in case it recovers."
+        : undefined,
     };
     return NextResponse.json(body);
   } catch (err) {
