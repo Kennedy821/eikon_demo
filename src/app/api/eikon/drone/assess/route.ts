@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { callBackend, BackendError } from "@/lib/server/backend";
 
 /**
- * POST /api/eikon/drone/assess  { apiKey, criteria[], h3Cells[] }  ->
+ * POST /api/eikon/drone/assess  { apiKey, criteria[], h3Cells[], country }  ->
  *   { assessment: AssessmentCell[] }
  *
  * Ports run_corridor_assessment: first checks the worker is awake
@@ -10,16 +10,28 @@ import { callBackend, BackendError } from "@/lib/server/backend";
  * /run_assessment_custom_polygon_cuda and returns the parsed assessment records.
  * A single POST (no retries) — matching the app's deliberate no-retry behaviour.
  */
+const VALID_COUNTRIES = ["uk", "hongkong"];
+
 export async function POST(req: NextRequest) {
   try {
-    const { apiKey, criteria, h3Cells } = (await req.json()) as {
+    const { apiKey, criteria, h3Cells, country } = (await req.json()) as {
       apiKey?: string;
       criteria?: string[];
       h3Cells?: string[];
+      country?: string;
     };
     if (!apiKey || !criteria?.length || !h3Cells?.length) {
       return NextResponse.json(
         { error: "apiKey, criteria and h3Cells are required" },
+        { status: 400 },
+      );
+    }
+    // The backend only recognises these two; reject anything else here rather
+    // than letting it fail deeper in with a less obvious message.
+    const countryValue = (country ?? "uk").toLowerCase();
+    if (!VALID_COUNTRIES.includes(countryValue)) {
+      return NextResponse.json(
+        { error: `country must be one of: ${VALID_COUNTRIES.join(", ")}` },
         { status: 400 },
       );
     }
@@ -44,7 +56,12 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await callBackend<{ assessment_result?: string }>("corridorAssessment", {
-      json: { api_key: apiKey, assessment_criteria: criteria, h3_cells: h3Cells },
+      json: {
+        api_key: apiKey,
+        assessment_criteria: criteria,
+        h3_cells: h3Cells,
+        country: countryValue,
+      },
       timeoutMs: 1_200_000, // corridors can take several minutes
     });
 

@@ -21,12 +21,37 @@ const DroneMap = dynamic(() => import("@/components/map/DroneMap"), {
 
 const H9_EDGE_M = 174;
 const DEFAULT_CRITERIA = ["major industrial areas", "residential houses", "lots of buildings"];
+
+/**
+ * Countries the assessment backend holds reference data for. The value is sent
+ * as `country`; the defaults move the corridor into that country, since a UK
+ * route assessed against Hong Kong data (or vice versa) is meaningless.
+ */
+const COUNTRIES = [
+  {
+    value: "uk",
+    label: "United Kingdom",
+    origin: { lat: "51.47669", lon: "-0.445234", hex: "8919768cd4fffff" },
+    dest: { lat: "51.332121", lon: "0.031690", hex: "89192b32e37ffff" },
+  },
+  {
+    value: "hongkong",
+    label: "Hong Kong",
+    // Tai Tam, Southern district — cells confirmed present in the Hong Kong
+    // reference data. Coordinates are the centres of the two hexes.
+    origin: { lat: "22.241406", lon: "114.246822", hex: "8941034944fffff" },
+    dest: { lat: "22.246729", lon: "114.162474", hex: "89410349d47ffff" },
+  },
+] as const;
+
+type CountryValue = (typeof COUNTRIES)[number]["value"];
 const RESULT_VIEWS = ["Risk Map", "Route Map", "Data Table"] as const;
 type ResultView = (typeof RESULT_VIEWS)[number];
 
 export function DroneCorridorTab() {
   const { run, rerank, reset, isRunning, phaseLabel, warning, error, result } = useDroneCorridor();
 
+  const [country, setCountry] = useState<CountryValue>("uk");
   const [method, setMethod] = useState<"Coordinates" | "H3 Hex ID">("Coordinates");
   const [origLat, setOrigLat] = useState("51.47669");
   const [origLon, setOrigLon] = useState("-0.445234");
@@ -40,6 +65,19 @@ export function DroneCorridorTab() {
   const [view, setView] = useState<ResultView>("Risk Map");
   const [basemap, setBasemap] = useState<Basemap>("Dark");
   const [safetyWeight, setSafetyWeight] = useState(0.5);
+
+  function onCountryChange(next: CountryValue) {
+    setCountry(next);
+    const preset = COUNTRIES.find((c) => c.value === next);
+    if (!preset) return;
+    // Carry the defaults across so the corridor is inside the chosen country.
+    setOrigLat(preset.origin.lat);
+    setOrigLon(preset.origin.lon);
+    setDestLat(preset.dest.lat);
+    setDestLon(preset.dest.lon);
+    if (preset.origin.hex) setOrigHex(preset.origin.hex);
+    if (preset.dest.hex) setDestHex(preset.dest.hex);
+  }
 
   function resolveCoords(): { origin: [number, number]; dest: [number, number] } | null {
     if (method === "Coordinates") {
@@ -68,6 +106,7 @@ export function DroneCorridorTab() {
       bufferMetres: Math.round(bufferKm * 1000),
       kring: Math.floor(landingM / H9_EDGE_M),
       criteria: trimmed,
+      country,
     });
   }
 
@@ -90,6 +129,23 @@ export function DroneCorridorTab() {
       <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
         {/* ---- Left: inputs ---- */}
         <div className="space-y-4">
+          <div className="space-y-3 rounded-lg border p-4">
+            <label className="block text-sm">
+              <span className="mb-1 block text-eikon-muted">Country</span>
+              <select
+                value={country}
+                onChange={(e) => onCountryChange(e.target.value as CountryValue)}
+                className="w-full rounded border px-2 py-1.5"
+              >
+                {COUNTRIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
           <div className="space-y-3 rounded-lg border p-4">
             <h2 className="text-sm font-semibold text-eikon-midnight">Origin &amp; Destination</h2>
             <div className="flex gap-4 text-sm">

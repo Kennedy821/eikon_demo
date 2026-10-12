@@ -140,7 +140,13 @@ export function getChatStatus(jobId: string) {
 }
 
 // ---- drone corridor ----
-export function assessCorridor(input: { apiKey: string; criteria: string[]; h3Cells: string[] }) {
+export function assessCorridor(input: {
+  apiKey: string;
+  criteria: string[];
+  h3Cells: string[];
+  /** "uk" or "hongkong" — selects the backend's reference data. */
+  country: string;
+}) {
   return postJson<{ assessment: Record<string, unknown>[] }>("/api/eikon/drone/assess", input);
 }
 

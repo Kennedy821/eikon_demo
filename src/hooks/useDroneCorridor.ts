@@ -28,6 +28,8 @@ export interface DroneRunParams {
   bufferMetres: number;
   kring: number;
   criteria: string[];
+  /** "uk" or "hongkong" — selects the backend's reference data. */
+  country: string;
 }
 
 type Phase = "idle" | "assessing" | "routing" | "complete";
@@ -58,7 +60,7 @@ export function useDroneCorridor() {
   const run = useCallback(
     async (params: DroneRunParams) => {
       if (inFlight.current || !apiKey) return;
-      const { origin, dest, bufferMetres, kring, criteria } = params;
+      const { origin, dest, bufferMetres, kring, criteria, country } = params;
 
       setError(null);
       setWarning(null);
@@ -87,7 +89,12 @@ export function useDroneCorridor() {
         }
 
         // 3. Assessment (backend).
-        const { assessment } = await assessCorridor({ apiKey, criteria, h3Cells: h9Cells });
+        const { assessment } = await assessCorridor({
+          apiKey,
+          criteria,
+          h3Cells: h9Cells,
+          country,
+        });
         const assessmentRows = assessment as unknown as AssessmentCell[];
 
         // 4. Origin/dest parent hexes at res 7, then pathfinder (backend).
