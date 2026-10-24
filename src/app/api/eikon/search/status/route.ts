@@ -45,10 +45,18 @@ function toOptionalNumber(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Parse the objects_detected column (JSON string or array) into a tidy list. */
+/**
+ * Parse the detected-objects column into a tidy list.
+ *
+ * The backend sends a JSON string such as
+ *   [{"name":"industrial_buildings","objects_detected":6,
+ *     "proportion_of_area_that_is_label":"19.9062%"}]
+ * or the literal "no_objects_found" when nothing was detected.
+ */
 function parseObjects(v: unknown): DetectedObject[] {
   let arr: unknown = v;
   if (typeof v === "string") {
+    if (v.trim() === "" || v.trim() === "no_objects_found") return [];
     try {
       arr = JSON.parse(v);
     } catch {
@@ -95,7 +103,11 @@ function normalise(rows: Record<string, unknown>[]): SearchResult[] {
       aiModelRationale: (row.ai_model_rationale ?? null) as string | null,
       aiEvaluation: toOptionalNumber(row.ai_evaluation),
       aiRationale: (row.ai_rationale ?? null) as string | null,
-      objectsDetected: parseObjects(row.objects_detected),
+      // The column is named objects_detected_descriptions; the shorter name is
+      // kept as a fallback so older results still parse.
+      objectsDetected: parseObjects(
+        row.objects_detected_descriptions ?? row.objects_detected,
+      ),
       raw: row,
     };
   });
