@@ -22,7 +22,10 @@ const PolygonDrawMap = dynamic(() => import("@/components/map/PolygonDrawMap"), 
   loading: () => <div className="h-[380px] w-full animate-pulse rounded-lg bg-eikon-panel" />,
 });
 
-const EFFORT_LEVELS = ["test", "quick", "moderate", "exhaustive"];
+// "rapid" is not an effort level but a separate pipeline with its own submit,
+// status and progress endpoints. It sits first because it is the quickest.
+const RAPID = "rapid";
+const EFFORT_LEVELS = [RAPID, "test", "quick", "moderate", "exhaustive"];
 const MAP_SELECTION = "Map selection";
 const SPATIAL_RESOLUTIONS = ["UK - all", "UK - area", MAP_SELECTION];
 
@@ -73,6 +76,7 @@ export function SearchExperimentalTab() {
     submit({
       prompt,
       effort,
+      rapid: effort === RAPID,
       spatialResolution,
       borough: spatialResolution === "UK - area" ? borough : null,
       geodataframe: isMapSelection && aoi ? toGeodataframe(aoi) : undefined,

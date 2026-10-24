@@ -13,17 +13,31 @@ import type { SearchResult } from "@/lib/types";
 // other's job reference.
 const JOB_ID_KEY = "eikon_active_search_experimental_job_id";
 
-function readStoredJobId(): string | null {
+/**
+ * A rapid job must keep being polled on the rapid endpoints after a reload, so
+ * the pipeline is stored alongside the id.
+ */
+interface StoredJob {
+  jobId: string;
+  rapid: boolean;
+}
+
+function readStoredJob(): StoredJob | null {
   try {
-    return sessionStorage.getItem(JOB_ID_KEY);
+    const raw = sessionStorage.getItem(JOB_ID_KEY);
+    if (!raw) return null;
+    // Older sessions stored a bare id string; treat those as standard jobs.
+    if (!raw.startsWith("{")) return { jobId: raw, rapid: false };
+    const parsed = JSON.parse(raw) as Partial<StoredJob>;
+    return parsed.jobId ? { jobId: parsed.jobId, rapid: !!parsed.rapid } : null;
   } catch {
     return null;
   }
 }
 
-function writeStoredJobId(id: string | null) {
+function writeStoredJob(job: StoredJob | null) {
   try {
-    if (id) sessionStorage.setItem(JOB_ID_KEY, id);
+    if (job) sessionStorage.setItem(JOB_ID_KEY, JSON.stringify(job));
     else sessionStorage.removeItem(JOB_ID_KEY);
   } catch {
     /* storage unavailable — degrade gracefully */
@@ -39,11 +53,13 @@ export function useSearchExperimentalJob() {
   const { apiKey } = useAuth();
 
   // Initialise from sessionStorage so navigation doesn't wipe an active job.
-  const [jobId, setJobIdState] = useState<string | null>(readStoredJobId);
+  const [job, setJobState] = useState<StoredJob | null>(readStoredJob);
+  const jobId = job?.jobId ?? null;
+  const isRapid = job?.rapid ?? false;
 
-  function setJobId(id: string | null) {
-    writeStoredJobId(id);
-    setJobIdState(id);
+  function setJob(next: StoredJob | null) {
+    writeStoredJob(next);
+    setJobState(next);
   }
 
   // Tracks the last successfully-received stage so transient progress poll
@@ -51,22 +67,27 @@ export function useSearchExperimentalJob() {
   const lastStageRef = useRef<StageInfo>(STAGES[0]);
 
   const submit = useMutation({
-    mutationFn: (input: {
+    mutationFn: async (input: {
       prompt: string;
       effort?: string;
       spatialResolution?: string;
       borough?: string | null;
       geodataframe?: unknown;
-    }) => submitSearch({ ...input, apiKey: apiKey as string }),
+      rapid?: boolean;
+    }) => {
+      const res = await submitSearch({ ...input, apiKey: apiKey as string });
+      // Carry the pipeline through so polling targets the right endpoints.
+      return { jobId: res.jobId, rapid: !!input.rapid };
+    },
     onSuccess: (data) => {
       setExtraResults([]); // a fresh search starts with a clean slate
-      setJobId(data.jobId);
+      setJob({ jobId: data.jobId, rapid: data.rapid });
     },
   });
 
   const status = useQuery({
     queryKey: ["search-exp-status", jobId],
-    queryFn: () => getSearchStatus(jobId as string),
+    queryFn: () => getSearchStatus(jobId as string, isRapid),
     enabled: !!jobId,
     // Poll at 5s — aggressive enough to catch completion promptly but not
     // hammering the backend for a multi-minute moderate/exhaustive run.
@@ -116,7 +137,7 @@ export function useSearchExperimentalJob() {
     // same api key) each track their own progress; jobId is always set here
     // (the query is enabled only when it exists), but the param stays optional
     // so legacy/no-id callers keep the backend's most-recent-job fallback.
-    queryFn: () => getSearchProgress(apiKey as string, jobId ?? undefined),
+    queryFn: () => getSearchProgress(apiKey as string, jobId ?? undefined, isRapid),
     enabled: !!jobId && !!apiKey && !isComplete,
     refetchInterval: isComplete ? false : POLL.searchProgress,
     refetchIntervalInBackground: true,
@@ -152,7 +173,7 @@ export function useSearchExperimentalJob() {
   const error = submit.error ?? (jobFailed ? (status.error ?? new Error("Search failed")) : null);
 
   function reset() {
-    setJobId(null);
+    setJob(null);
     setExtraResults([]);
     lastStageRef.current = STAGES[0];
     submit.reset();

@@ -49,6 +49,24 @@ export const BACKEND = {
     method: "POST",
   },
 
+  // ---- rapid search (ngrok) — a separate pipeline with its own submit,
+  //      status and progress endpoints. Selected by the "rapid" effort level.
+  rapidSearchSubmit: {
+    base: NGROK_BASE,
+    path: "/eikon_search_agent_api_uk_rapid_search_submit",
+    method: "POST",
+  },
+  rapidSearchStatus: {
+    base: NGROK_BASE,
+    path: "/eikon_search_agent_api_uk_rapid_search_status",
+    method: "GET",
+  },
+  rapidCheckJobComplete: {
+    base: NGROK_BASE,
+    path: "/check_if_eikon_search_agent_api_uk_rapid_search_job_complete_web",
+    method: "POST",
+  },
+
   // ---- context (pagekite, via eikonsai.context) ----
   locationDescription: { base: NGROK_BASE, path: "/get_location_description", method: "POST" },
   locationImage: { base: NGROK_BASE, path: "/get_location_image", method: "POST" },

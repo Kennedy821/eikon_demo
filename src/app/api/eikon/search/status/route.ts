@@ -18,6 +18,8 @@ import type { SearchResult, DetectedObject } from "@/lib/types";
 interface StatusResponse {
   status?: string;
   result?: string;
+  /** The rapid endpoint uses this for an unknown job_id. */
+  error?: string;
 }
 
 /** Convert a column-oriented dict ({col: {idx: val}}) into row records. */
@@ -105,11 +107,21 @@ export async function GET(req: NextRequest) {
     if (!jobId) {
       return NextResponse.json({ error: "jobId required" }, { status: 400 });
     }
+    const rapid = req.nextUrl.searchParams.get("rapid") === "true";
 
-    const data = await callBackend<StatusResponse>("searchStatus", {
-      query: { job_id: jobId },
-      timeoutMs: 30_000,
-    });
+    const data = await callBackend<StatusResponse>(
+      rapid ? "rapidSearchStatus" : "searchStatus",
+      {
+        query: { job_id: jobId },
+        timeoutMs: 30_000,
+      },
+    );
+
+    // The rapid endpoint answers an unrecognised job with an error rather than
+    // a pending status, so surface that instead of polling forever.
+    if (data?.error) {
+      return NextResponse.json({ status: "failed", error: data.error });
+    }
 
     if (data?.status !== "completed") {
       return NextResponse.json({ status: data?.status ?? "pending" });

@@ -53,13 +53,17 @@ export function submitSearch(input: {
    * experimental Search tab's "Map selection" mode; production search omits it.
    */
   geodataframe?: unknown;
+  /** Route to the rapid search pipeline instead of the standard one. */
+  rapid?: boolean;
 }) {
   return postJson<{ jobId: string }>("/api/eikon/search/submit", input);
 }
 
-export function getSearchStatus(jobId: string) {
-  return getJson<{ status: string; results?: SearchResult[] }>(
-    `/api/eikon/search/status?jobId=${encodeURIComponent(jobId)}`,
+export function getSearchStatus(jobId: string, rapid = false) {
+  const q = new URLSearchParams({ jobId });
+  if (rapid) q.set("rapid", "true");
+  return getJson<{ status: string; results?: SearchResult[]; error?: string }>(
+    `/api/eikon/search/status?${q.toString()}`,
   );
 }
 
@@ -68,10 +72,11 @@ export interface SearchProgress {
   jobComplete: boolean;
 }
 
-export function getSearchProgress(apiKey: string, jobId?: string) {
+export function getSearchProgress(apiKey: string, jobId?: string, rapid = false) {
   return postJson<SearchProgress>("/api/eikon/search/progress", {
     apiKey,
     ...(jobId ? { jobId } : {}),
+    ...(rapid ? { rapid: true } : {}),
   });
 }
 

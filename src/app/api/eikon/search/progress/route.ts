@@ -15,13 +15,17 @@ import { callBackend, BackendError } from "@/lib/server/backend";
  */
 export async function POST(req: NextRequest) {
   try {
-    const { apiKey, jobId } = (await req.json()) as { apiKey?: string; jobId?: string };
+    const { apiKey, jobId, rapid } = (await req.json()) as {
+      apiKey?: string;
+      jobId?: string;
+      rapid?: boolean;
+    };
     if (!apiKey) {
       return NextResponse.json({ error: "apiKey required" }, { status: 400 });
     }
 
     const data = await callBackend<{ latest_ckpt?: string; job_complete?: boolean }>(
-      "checkJobComplete",
+      rapid ? "rapidCheckJobComplete" : "checkJobComplete",
       { json: { api_key: apiKey, ...(jobId ? { job_id: jobId } : {}) }, timeoutMs: 8_000 },
     );
 

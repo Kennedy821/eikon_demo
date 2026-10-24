@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
       spatialResolution?: string;
       borough?: string | null;
       geodataframe?: unknown;
+      rapid?: boolean;
     };
     const {
       prompt,
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
       spatialResolution = "UK - all",
       borough,
       geodataframe,
+      rapid = false,
     } = body;
 
     if (!prompt || !apiKey) {
@@ -50,10 +52,13 @@ export async function POST(req: NextRequest) {
       payload.unique_id = "unique_id";
     }
 
-    const data = await callBackend<{ job_id?: string }>("searchSubmit", {
-      json: payload,
-      timeoutMs: 30_000,
-    });
+    const data = await callBackend<{ job_id?: string }>(
+      rapid ? "rapidSearchSubmit" : "searchSubmit",
+      {
+        json: payload,
+        timeoutMs: 30_000,
+      },
+    );
 
     if (!data?.job_id) {
       return NextResponse.json({ error: "No job_id returned" }, { status: 502 });
