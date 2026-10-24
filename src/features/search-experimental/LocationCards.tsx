@@ -407,8 +407,14 @@ function SimilarLocationImage({ cell }: { cell: string }) {
     staleTime: 5 * 60_000,
   });
 
+  // The main card's image sits in a two-column grid, so it renders at half the
+  // panel width. This one is in a full-width container, which made it roughly
+  // twice the size. Cap it so both read at the same scale; the card's grid uses
+  // gap-4, hence the half-gap subtraction.
+  const WIDTH = "mx-auto w-full md:max-w-[calc(50%-0.5rem)]";
+
   if (image.isLoading) {
-    return <div className="h-56 w-full animate-pulse rounded bg-eikon-panel" />;
+    return <div className={`h-48 animate-pulse rounded bg-eikon-panel ${WIDTH}`} />;
   }
   if (image.data?.image) {
     return (
@@ -416,7 +422,7 @@ function SimilarLocationImage({ cell }: { cell: string }) {
       <img
         src={`data:image/png;base64,${image.data.image}`}
         alt="Similar location"
-        className="w-full rounded border"
+        className={`rounded border ${WIDTH}`}
       />
     );
   }
