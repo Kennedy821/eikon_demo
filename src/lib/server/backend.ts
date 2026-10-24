@@ -70,6 +70,13 @@ export const BACKEND = {
   // ---- context (pagekite, via eikonsai.context) ----
   locationDescription: { base: NGROK_BASE, path: "/get_location_description", method: "POST" },
   locationImage: { base: NGROK_BASE, path: "/get_location_image", method: "POST" },
+  // v2 — country-aware. Same payload as v1 plus `country`.
+  locationDescriptionV2: {
+    base: NGROK_BASE,
+    path: "/get_location_description_v2",
+    method: "POST",
+  },
+  locationImageV2: { base: NGROK_BASE, path: "/get_location_image_v2", method: "POST" },
 
   // ---- similarity (unified endpoint; similarity_type in the payload selects
   //      visual / descriptive / combined / latent / holistic / mm) ----

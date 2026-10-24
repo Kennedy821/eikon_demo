@@ -14,6 +14,31 @@ const PointsMap = dynamic(() => import("@/components/map/PointsMap"), {
 });
 
 const RESOLUTIONS = ["low", "medium", "high"];
+
+/**
+ * Countries the v2 context endpoints hold imagery for. Switching country moves
+ * the default location into it, since UK coordinates described against Hong
+ * Kong data would be meaningless.
+ */
+const COUNTRIES = [
+  {
+    value: "uk",
+    label: "United Kingdom",
+    lat: "51.5074",
+    lon: "-0.1278",
+    hex: "89195da4b3bffff",
+  },
+  {
+    value: "hongkong",
+    label: "Hong Kong",
+    // Mong Kok, dense urban Kowloon.
+    lat: "22.3193",
+    lon: "114.1694",
+    hex: "89411cb361bffff",
+  },
+] as const;
+
+type CountryValue = (typeof COUNTRIES)[number]["value"];
 // An H3 cell fixes the analysis resolution: res 7 = low, 8 = medium, 9 = high.
 const H3_RES_TO_ANALYSIS: Record<number, string> = { 7: "low", 8: "medium", 9: "high" };
 const INPUT_MODES = ["Coordinates", "H3 hex"] as const;
@@ -27,6 +52,7 @@ type InputMode = (typeof INPUT_MODES)[number];
  */
 export function ContextTab() {
   const { apiKey } = useAuth();
+  const [country, setCountry] = useState<CountryValue>("uk");
   const [inputMode, setInputMode] = useState<InputMode>("Coordinates");
   const [lat, setLat] = useState("51.5074");
   const [lon, setLon] = useState("-0.1278");
@@ -55,12 +81,19 @@ export function ContextTab() {
   // The analysed location travels with the request (mutation variables) so the
   // results panel always describes the request that produced it.
   const ctx = useMutation({
-    mutationFn: (loc: { lat: number; lon: number; hex: string | null; resolution: string }) =>
+    mutationFn: (loc: {
+      lat: number;
+      lon: number;
+      hex: string | null;
+      resolution: string;
+      country: string;
+    }) =>
       getContext({
         lat: loc.lat,
         lon: loc.lon,
         resolution: loc.resolution,
         apiKey: apiKey as string,
+        country: loc.country,
       }),
   });
   const analysed = ctx.variables ?? null;
@@ -70,7 +103,16 @@ export function ContextTab() {
   const { reset: resetCtx } = ctx;
   useEffect(() => {
     resetCtx();
-  }, [inputMode, lat, lon, hexId, resolution, resetCtx]);
+  }, [country, inputMode, lat, lon, hexId, resolution, resetCtx]);
+
+  function onCountryChange(next: CountryValue) {
+    setCountry(next);
+    const preset = COUNTRIES.find((c) => c.value === next);
+    if (!preset) return;
+    setLat(preset.lat);
+    setLon(preset.lon);
+    setHexId("");
+  }
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -80,6 +122,7 @@ export function ContextTab() {
       lon: lonN,
       hex: isHexMode ? hexTrimmed : null,
       resolution: effectiveResolution,
+      country,
     });
   }
 
@@ -96,6 +139,20 @@ export function ContextTab() {
         {/* ---- Left: location input ---- */}
         <form onSubmit={onSubmit} className="space-y-3 rounded-lg border p-4">
           <h2 className="text-sm font-semibold text-eikon-midnight">Location input</h2>
+          <label className="block text-sm">
+            <span className="mb-1 block text-eikon-muted">Country</span>
+            <select
+              value={country}
+              onChange={(e) => onCountryChange(e.target.value as CountryValue)}
+              className="w-full rounded border px-2 py-1.5"
+            >
+              {COUNTRIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="block text-sm">
             <span className="mb-1 block text-eikon-muted">Input type</span>
             <select

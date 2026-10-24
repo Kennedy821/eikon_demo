@@ -5,21 +5,34 @@ import { callBackend, BackendError } from "@/lib/server/backend";
  * POST /api/eikon/context  { lat, lon, resolution, apiKey }
  *   -> { description, image }   (image is base64 or null)
  *
+ * Both halves use the country-aware v2 endpoints.
+ *
  * Mirrors eikonsai.context.get_location_description + get_location_image
  * (POST pagekite /get_location_description and /get_location_image, payload
  * { text:"placeholder", location:[lat,lon], resolution, api_key }).
  * Both are fetched in parallel; image failures are non-fatal.
  */
+const VALID_COUNTRIES = ["uk", "hongkong"];
+
 export async function POST(req: NextRequest) {
   try {
-    const { lat, lon, resolution, apiKey } = (await req.json()) as {
+    const { lat, lon, resolution, apiKey, country } = (await req.json()) as {
       lat?: number;
       lon?: number;
       resolution?: string;
       apiKey?: string;
+      country?: string;
     };
     if (lat === undefined || lon === undefined || !apiKey) {
       return NextResponse.json({ error: "lat, lon, apiKey required" }, { status: 400 });
+    }
+    // Reject an unknown country here rather than letting it fail deeper in.
+    const countryValue = (country ?? "uk").toLowerCase();
+    if (!VALID_COUNTRIES.includes(countryValue)) {
+      return NextResponse.json(
+        { error: `country must be one of: ${VALID_COUNTRIES.join(", ")}` },
+        { status: 400 },
+      );
     }
 
     const payload = {
@@ -27,11 +40,12 @@ export async function POST(req: NextRequest) {
       location: [lat, lon],
       resolution: resolution ?? "medium",
       api_key: apiKey,
+      country: countryValue,
     };
 
     const [descRes, imgRes] = await Promise.allSettled([
-      callBackend<{ location_description?: string }>("locationDescription", { json: payload }),
-      callBackend<{ location_image?: string }>("locationImage", { json: payload }),
+      callBackend<{ location_description?: string }>("locationDescriptionV2", { json: payload }),
+      callBackend<{ location_image?: string }>("locationImageV2", { json: payload }),
     ]);
 
     const description =

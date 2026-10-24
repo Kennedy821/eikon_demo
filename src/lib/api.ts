@@ -86,6 +86,8 @@ export function getContext(input: {
   lon: number;
   resolution: string;
   apiKey: string;
+  /** "uk" or "hongkong". Defaults to uk server-side. */
+  country?: string;
 }): Promise<LocationContext & { image: string | null }> {
   return postJson("/api/eikon/context", input);
 }
