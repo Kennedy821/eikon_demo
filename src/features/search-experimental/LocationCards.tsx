@@ -89,6 +89,13 @@ export function LocationCards({
   );
 }
 
+/**
+ * Width for both satellite images — the location card's and the carousel's —
+ * so they render at the same scale and stay centred. Half the container, less
+ * half of the grid's gap-4.
+ */
+const CARD_IMAGE_WIDTH = "mx-auto w-full md:max-w-[calc(50%-0.5rem)]";
+
 function resolutionLabel(locationId: string): string {
   try {
     const r = getResolution(locationId);
@@ -169,24 +176,6 @@ function LocationCard({
             Lat: {loc.lat.toFixed(6)}
             {"\n"}Lon: {loc.lon.toFixed(6)}
           </pre>
-          {image.isLoading && <div className="h-48 w-full animate-pulse rounded bg-eikon-panel" />}
-          {image.data?.image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={`data:image/png;base64,${image.data.image}`}
-              alt="Satellite view"
-              className="w-full rounded border"
-            />
-          ) : (
-            !image.isLoading && (
-              <button
-                onClick={() => image.refetch()}
-                className="rounded border px-3 py-1 text-sm text-eikon-midnight"
-              >
-                Retry image fetch
-              </button>
-            )
-          )}
         </div>
 
         <div className="space-y-2">
@@ -205,6 +194,31 @@ function LocationCard({
           )}
         </div>
       </div>
+
+      {/* The image gets its own row and is centred at the same capped width as
+          the "More like this" carousel. It previously sat in the left grid
+          column, which left it stranded against the card edge whenever the
+          right column had no detected objects to show. */}
+      {image.isLoading && (
+        <div className={`h-48 animate-pulse rounded bg-eikon-panel ${CARD_IMAGE_WIDTH}`} />
+      )}
+      {image.data?.image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`data:image/png;base64,${image.data.image}`}
+          alt="Satellite view"
+          className={`rounded border ${CARD_IMAGE_WIDTH}`}
+        />
+      ) : (
+        !image.isLoading && (
+          <button
+            onClick={() => image.refetch()}
+            className="mx-auto block rounded border px-3 py-1 text-sm text-eikon-midnight"
+          >
+            Retry image fetch
+          </button>
+        )
+      )}
 
       <div>
         <h3 className="text-sm font-semibold text-eikon-midnight">Location Description</h3>
@@ -411,7 +425,7 @@ function SimilarLocationImage({ cell }: { cell: string }) {
   // panel width. This one is in a full-width container, which made it roughly
   // twice the size. Cap it so both read at the same scale; the card's grid uses
   // gap-4, hence the half-gap subtraction.
-  const WIDTH = "mx-auto w-full md:max-w-[calc(50%-0.5rem)]";
+  const WIDTH = CARD_IMAGE_WIDTH;
 
   if (image.isLoading) {
     return <div className={`h-48 animate-pulse rounded bg-eikon-panel ${WIDTH}`} />;
