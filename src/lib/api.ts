@@ -198,6 +198,8 @@ export function runPortfolio(input: {
   resolution: string;
   similarityType: string;
   apiKey: string;
+  /** "uk" or "hongkong". Omitted when the caller has no country context. */
+  country?: string;
 }) {
   return postJson<{ results: PortfolioResult[] }>("/api/eikon/portfolio", input);
 }

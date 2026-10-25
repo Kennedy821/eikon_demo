@@ -302,6 +302,7 @@ function MoreLikeThis({
         resolution: "high",
         similarityType: "combined",
         apiKey: apiKey as string,
+        country,
       });
     },
     onSuccess: (data) => {

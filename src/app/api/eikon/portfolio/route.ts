@@ -15,6 +15,8 @@ import { callBackend, BackendError } from "@/lib/server/backend";
  *   -> { portfolio_comparison_result: <column-oriented DataFrame JSON string> }
  */
 
+const VALID_COUNTRIES = ["uk", "hongkong"];
+
 interface Pair {
   orig: string;
   dest: string;
@@ -38,19 +40,32 @@ function columnsToRows(parsed: Record<string, Record<string, unknown>>): Record<
 
 export async function POST(req: NextRequest) {
   try {
-    const { pairs, resolution = "medium", similarityType = "combined", apiKey } =
+    const { pairs, resolution = "medium", similarityType = "combined", apiKey, country } =
       (await req.json()) as {
         pairs?: Pair[];
         resolution?: string;
         similarityType?: string;
         apiKey?: string;
+        country?: string;
       };
 
     if (!apiKey || !pairs || pairs.length === 0) {
       return NextResponse.json({ error: "apiKey and at least one pair required" }, { status: 400 });
     }
 
-    const payload = {
+    // Reject an unknown country here rather than letting it fail deeper in.
+    let countryValue: string | null = null;
+    if (country !== undefined) {
+      countryValue = country.toLowerCase();
+      if (!VALID_COUNTRIES.includes(countryValue)) {
+        return NextResponse.json(
+          { error: `country must be one of: ${VALID_COUNTRIES.join(", ")}` },
+          { status: 400 },
+        );
+      }
+    }
+
+    const payload: Record<string, unknown> = {
       origin_uniq_id: pairs.map((p) => p.orig),
       destination_uniq_id: pairs.map((p) => p.dest),
       origin_lat_list: pairs.map((p) => p.origLat),
@@ -61,6 +76,9 @@ export async function POST(req: NextRequest) {
       resolution,
       similarity_type: similarityType,
     };
+    // Callers that know their country send it; the Portfolio tab has no country
+    // selector, so it omits the key entirely and the backend default applies.
+    if (countryValue) payload.country = countryValue;
 
     const data = await callBackend<{ portfolio_comparison_result?: string }>("portfolio", {
       json: payload,
