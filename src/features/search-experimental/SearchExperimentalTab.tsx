@@ -22,12 +22,75 @@ const PolygonDrawMap = dynamic(() => import("@/components/map/PolygonDrawMap"), 
   loading: () => <div className="h-[380px] w-full animate-pulse rounded-lg bg-eikon-panel" />,
 });
 
-// "rapid" is not an effort level but a separate pipeline with its own submit,
-// status and progress endpoints. It sits first because it is the quickest.
-const RAPID = "rapid";
-const EFFORT_LEVELS = [RAPID, "test", "quick", "moderate", "exhaustive"];
+// Every search goes to the newer pipeline, which has its own submit, status
+// and progress endpoints and is the country-aware one. The effort level is
+// independent of that choice: all of these are sent to it verbatim as
+// effort_selection.
+const EFFORT_LEVELS = ["rapid", "test", "quick", "moderate", "exhaustive"];
 const MAP_SELECTION = "Map selection";
-const SPATIAL_RESOLUTIONS = ["UK - all", "UK - area", MAP_SELECTION];
+
+/**
+ * A resolution is held as a mode rather than a literal string, because the
+ * value the backend wants ("UK - all", "hongkong - all") is country-specific.
+ * Both the option label and the submitted value are derived from the country,
+ * so a new country needs only a COUNTRIES entry.
+ */
+const RESOLUTION_MODES = ["all", "area", "map"] as const;
+type ResolutionMode = (typeof RESOLUTION_MODES)[number];
+
+/**
+ * Everything that varies by country lives here, so adding a country is one
+ * entry rather than a new conditional in each control.
+ *
+ * `searchPrefix` is the prefix of the spatial_resolution_for_search value sent
+ * to the backend; `shortLabel` is the user-facing one. Searching by area is
+ * UK-only, so `supportsAreaSearch` gates that option.
+ */
+const COUNTRIES = [
+  {
+    value: "uk",
+    label: "United Kingdom",
+    shortLabel: "UK",
+    searchPrefix: "UK",
+    supportsAreaSearch: true,
+    mapView: { longitude: -2.5, latitude: 54, zoom: 4.2 },
+  },
+  {
+    value: "hongkong",
+    label: "Hong Kong",
+    shortLabel: "Hong Kong",
+    searchPrefix: "hongkong",
+    supportsAreaSearch: false,
+    mapView: { longitude: 114.15, latitude: 22.35, zoom: 9.5 },
+  },
+] as const;
+
+type CountryValue = (typeof COUNTRIES)[number]["value"];
+
+function countryDef(value: CountryValue) {
+  return COUNTRIES.find((c) => c.value === value) ?? COUNTRIES[0];
+}
+
+/** The spatial_resolution_for_search value sent to the backend. */
+function resolutionValue(mode: ResolutionMode, country: CountryValue): string {
+  if (mode === "map") return MAP_SELECTION;
+  return `${countryDef(country).searchPrefix} - ${mode}`;
+}
+
+function resolutionLabel(mode: ResolutionMode, country: CountryValue): string {
+  if (mode === "map") return MAP_SELECTION;
+  return `${countryDef(country).shortLabel} - ${mode}`;
+}
+
+/**
+ * Searching by area is UK-only: the backend's supported-area list holds the
+ * 405 UK areas and no Hong Kong districts, so the option is not offered there.
+ */
+function resolutionsFor(country: CountryValue): ResolutionMode[] {
+  return countryDef(country).supportsAreaSearch
+    ? [...RESOLUTION_MODES]
+    : RESOLUTION_MODES.filter((m) => m !== "area");
+}
 
 /** Build the geodataframe payload — a GeoJSON FeatureCollection with a
  *  unique_id column, mirroring geopandas gdf[["unique_id","geometry"]].to_json()
@@ -48,9 +111,15 @@ const RESULT_VIEWS = ["Map View", "Location Profile", "Data Table"] as const;
 type ResultView = (typeof RESULT_VIEWS)[number];
 
 export function SearchExperimentalTab() {
+  const [country, setCountry] = useState<CountryValue>("uk");
+
+  function onCountryChange(next: CountryValue) {
+    setCountry(next);
+    if (!resolutionsFor(next).includes(resolutionMode)) setResolutionMode("all");
+  }
   const [prompt, setPrompt] = useState("");
   const [effort, setEffort] = useState("test");
-  const [spatialResolution, setSpatialResolution] = useState("UK - all");
+  const [resolutionMode, setResolutionMode] = useState<ResolutionMode>("all");
   const [borough, setBorough] = useState((UK_AREAS as string[])[0] ?? "");
   const [view, setView] = useState<ResultView>("Map View");
   const [selectedProfileIndex, setSelectedProfileIndex] = useState(0);
@@ -59,6 +128,7 @@ export function SearchExperimentalTab() {
     submit,
     reset,
     addResults,
+    jobCountry,
     isRunning,
     isComplete,
     results,
@@ -66,7 +136,7 @@ export function SearchExperimentalTab() {
     error,
   } = useSearchExperimentalJob();
 
-  const isMapSelection = spatialResolution === MAP_SELECTION;
+  const isMapSelection = resolutionMode === "map";
   // When drawing a custom AOI, an area must be drawn before searching.
   const canSubmit = prompt.trim().length > 0 && !isRunning && (!isMapSelection || !!aoi);
 
@@ -76,9 +146,11 @@ export function SearchExperimentalTab() {
     submit({
       prompt,
       effort,
-      rapid: effort === RAPID,
-      spatialResolution,
-      borough: spatialResolution === "UK - area" ? borough : null,
+      // Every effort level, "rapid" included, goes to the newer pipeline.
+      rapid: true,
+      country,
+      spatialResolution: resolutionValue(resolutionMode, country),
+      borough: resolutionMode === "area" ? borough : null,
       geodataframe: isMapSelection && aoi ? toGeodataframe(aoi) : undefined,
     });
   }
@@ -88,7 +160,7 @@ export function SearchExperimentalTab() {
       <div>
         <h1 className="text-2xl font-bold text-eikon-midnight">Location Search</h1>
         <p className="text-sm text-eikon-muted">
-          Search for locations across the UK.
+          Search for locations.
         </p>
       </div>
 
@@ -100,19 +172,36 @@ export function SearchExperimentalTab() {
             <h2 className="text-sm font-semibold text-eikon-midnight">Search parameters</h2>
 
             <label className="block text-sm">
-              <span className="mb-1 block text-eikon-muted">Spatial resolution</span>
+              <span className="mb-1 block text-eikon-muted">Country</span>
               <select
-                value={spatialResolution}
-                onChange={(e) => setSpatialResolution(e.target.value)}
+                value={country}
+                onChange={(e) => onCountryChange(e.target.value as CountryValue)}
                 className="w-full rounded border px-2 py-1.5"
               >
-                {SPATIAL_RESOLUTIONS.map((l) => (
-                  <option key={l}>{l}</option>
+                {COUNTRIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
                 ))}
               </select>
             </label>
 
-            {spatialResolution === "UK - area" && (
+            <label className="block text-sm">
+              <span className="mb-1 block text-eikon-muted">Spatial resolution</span>
+              <select
+                value={resolutionMode}
+                onChange={(e) => setResolutionMode(e.target.value as ResolutionMode)}
+                className="w-full rounded border px-2 py-1.5"
+              >
+                {resolutionsFor(country).map((m) => (
+                  <option key={m} value={m}>
+                    {resolutionLabel(m, country)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {resolutionMode === "area" && (
               <label className="block text-sm">
                 <span className="mb-1 block text-eikon-muted">Area</span>
                 <select
@@ -132,7 +221,11 @@ export function SearchExperimentalTab() {
                 <span className="block text-sm text-eikon-muted">
                   Draw area of interest
                 </span>
-                <PolygonDrawMap onChange={setAoi} />
+                <PolygonDrawMap
+                  key={country}
+                  onChange={setAoi}
+                  initialView={countryDef(country).mapView}
+                />
                 <p className={`text-xs ${aoi ? "text-green-700" : "text-eikon-muted"}`}>
                   {aoi
                     ? "✓ Area captured — this polygon will scope the search."
@@ -265,6 +358,7 @@ export function SearchExperimentalTab() {
                   results={results}
                   initialIndex={selectedProfileIndex}
                   onAddResults={addResults}
+                  country={jobCountry}
                 />
               )}
               {view === "Data Table" && <DataTable results={results} />}

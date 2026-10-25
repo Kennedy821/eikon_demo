@@ -9,6 +9,8 @@ import { callBackend, BackendError } from "@/lib/server/backend";
  *   POST ngrok /eikon_search_agent_api_uk_submit
  *   { prompt, api_key, effort_selection, spatial_resolution_for_search, selected_area? }
  */
+const VALID_COUNTRIES = ["uk", "hongkong"];
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
@@ -19,6 +21,7 @@ export async function POST(req: NextRequest) {
       borough?: string | null;
       geodataframe?: unknown;
       rapid?: boolean;
+      country?: string;
     };
     const {
       prompt,
@@ -28,6 +31,7 @@ export async function POST(req: NextRequest) {
       borough,
       geodataframe,
       rapid = false,
+      country,
     } = body;
 
     if (!prompt || !apiKey) {
@@ -40,7 +44,21 @@ export async function POST(req: NextRequest) {
       effort_selection: effort,
       spatial_resolution_for_search: spatialResolution,
     };
-    if (spatialResolution === "UK - area" && borough) {
+    // The rapid pipeline is country-aware and always wants to know which
+    // country the search is for.
+    if (rapid) {
+      const countryValue = (country ?? "uk").toLowerCase();
+      if (!VALID_COUNTRIES.includes(countryValue)) {
+        return NextResponse.json(
+          { error: `country must be one of: ${VALID_COUNTRIES.join(", ")}` },
+          { status: 400 },
+        );
+      }
+      payload.country = countryValue;
+    }
+    // The by-area value is country-prefixed ("UK - area"), so match the suffix
+    // rather than one country's literal.
+    if (spatialResolution.endsWith(" - area") && borough) {
       payload.selected_area = borough;
     }
     // Custom map-drawn AOI: add the geodataframe (GeoJSON FeatureCollection with

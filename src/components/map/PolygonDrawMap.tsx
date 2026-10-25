@@ -26,12 +26,24 @@ import { BASEMAP_STYLE, type Basemap } from "@/components/map/basemaps";
 
 type DrawMode = "polygon" | "rectangle" | "circle";
 
+/** Where the map opens. Callers pass the selected country's view. */
+export interface MapView {
+  longitude: number;
+  latitude: number;
+  zoom: number;
+}
+
+/** Fallback view when no caller supplies one: the whole UK. */
+const DEFAULT_VIEW: MapView = { longitude: -2.5, latitude: 54, zoom: 4.2 };
+
 export default function PolygonDrawMap({
   onChange,
   height = 380,
+  initialView = DEFAULT_VIEW,
 }: {
   onChange: (feature: Feature<Polygon> | null) => void;
   height?: number;
+  initialView?: MapView;
 }) {
   const drawRef = useRef<TerraDraw | null>(null);
   const [ready, setReady] = useState(false);
@@ -49,7 +61,7 @@ export default function PolygonDrawMap({
   const featureRef = useRef<Feature<Polygon> | null>(null);
 
   // Camera position, tracked so a basemap change doesn't reset the view.
-  const viewRef = useRef({ longitude: -2.5, latitude: 54, zoom: 4.2 });
+  const viewRef = useRef<MapView>(initialView);
 
   const initDraw = useCallback((e: { target: unknown }) => {
     const draw = new TerraDraw({

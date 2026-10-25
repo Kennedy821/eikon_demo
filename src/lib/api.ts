@@ -55,6 +55,8 @@ export function submitSearch(input: {
   geodataframe?: unknown;
   /** Route to the rapid search pipeline instead of the standard one. */
   rapid?: boolean;
+  /** "uk" or "hongkong". Sent with rapid searches. */
+  country?: string;
 }) {
   return postJson<{ jobId: string }>("/api/eikon/search/submit", input);
 }

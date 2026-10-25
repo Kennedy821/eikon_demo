@@ -16,11 +16,14 @@ export function LocationCards({
   results,
   initialIndex = 0,
   onAddResults,
+  country,
 }: {
   results: SearchResult[];
   initialIndex?: number;
   /** Called with "More like this" matches so they join the results set. */
   onAddResults?: (r: SearchResult[]) => void;
+  /** Country the search was run for; the image/description lookups need it. */
+  country: string;
 }) {
   const [index, setIndex] = useState(initialIndex);
   // "More like this" matches, keyed by the location they were requested for.
@@ -68,6 +71,7 @@ export function LocationCards({
         onSimilarItems={(items) =>
           setSimilarByLocation((prev) => ({ ...prev, [loc.locationId]: items }))
         }
+        country={country}
       />
 
       <label className="block text-sm">
@@ -112,11 +116,13 @@ function LocationCard({
   onAddResults,
   similarItems,
   onSimilarItems,
+  country,
 }: {
   loc: SearchResult;
   onAddResults?: (r: SearchResult[]) => void;
   similarItems: SimilarItem[] | null;
   onSimilarItems: (items: SimilarItem[]) => void;
+  country: string;
 }) {
   const { apiKey } = useAuth();
 
@@ -136,13 +142,14 @@ function LocationCard({
 
   // Satellite image via the existing context endpoint, at the H3-derived res.
   const image = useQuery({
-    queryKey: ["loc-image", loc.locationId, loc.lat, loc.lon],
+    queryKey: ["loc-image", loc.locationId, loc.lat, loc.lon, country],
     queryFn: () =>
       getContext({
         lat: loc.lat,
         lon: loc.lon,
         resolution: resolutionLabel(loc.locationId),
         apiKey: apiKey as string,
+        country,
       }),
     enabled: !!apiKey && loc.lat !== 0 && loc.lon !== 0,
     retry: 2,
@@ -249,6 +256,7 @@ function LocationCard({
         onAddResults={onAddResults}
         items={similarItems}
         onItems={onSimilarItems}
+        country={country}
       />
     </div>
   );
@@ -268,12 +276,14 @@ function MoreLikeThis({
   onAddResults,
   items,
   onItems,
+  country,
 }: {
   loc: SearchResult;
   onAddResults?: (r: SearchResult[]) => void;
   /** Matches previously requested for this location; null if never requested. */
   items: SimilarItem[] | null;
   onItems: (items: SimilarItem[]) => void;
+  country: string;
 }) {
   const { apiKey } = useAuth();
 
@@ -354,13 +364,19 @@ function MoreLikeThis({
         <p className="text-sm text-eikon-muted">No similar locations found near this one.</p>
       )}
 
-      {ranked.length > 0 && <SimilarCarousel items={ranked} />}
+      {ranked.length > 0 && <SimilarCarousel items={ranked} country={country} />}
     </div>
   );
 }
 
 /** Carousel of the most similar nearby locations — image + id, prev/next. */
-function SimilarCarousel({ items }: { items: { dest: string; similarity: number | null }[] }) {
+function SimilarCarousel({
+  items,
+  country,
+}: {
+  items: { dest: string; similarity: number | null }[];
+  country: string;
+}) {
   const [index, setIndex] = useState(0);
 
   // New results — start back at the best match.
@@ -395,7 +411,7 @@ function SimilarCarousel({ items }: { items: { dest: string; similarity: number 
         </button>
       </div>
 
-      <SimilarLocationImage cell={item.dest} />
+      <SimilarLocationImage cell={item.dest} country={country} />
 
       <div className="flex items-center justify-between text-sm">
         <span className="font-mono text-xs text-eikon-midnight">{item.dest}</span>
@@ -408,14 +424,20 @@ function SimilarCarousel({ items }: { items: { dest: string; similarity: number 
 }
 
 /** Satellite image for a similar-location cell, fetched like the main card's. */
-function SimilarLocationImage({ cell }: { cell: string }) {
+function SimilarLocationImage({ cell, country }: { cell: string; country: string }) {
   const { apiKey } = useAuth();
   const [lat, lon] = cellToLatLng(cell);
 
   const image = useQuery({
-    queryKey: ["loc-image", cell, lat, lon],
+    queryKey: ["loc-image", cell, lat, lon, country],
     queryFn: () =>
-      getContext({ lat, lon, resolution: resolutionLabel(cell), apiKey: apiKey as string }),
+      getContext({
+        lat,
+        lon,
+        resolution: resolutionLabel(cell),
+        apiKey: apiKey as string,
+        country,
+      }),
     enabled: !!apiKey,
     retry: 2,
     staleTime: 5 * 60_000,

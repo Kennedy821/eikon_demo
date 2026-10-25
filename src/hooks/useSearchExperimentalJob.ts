@@ -16,10 +16,15 @@ const JOB_ID_KEY = "eikon_active_search_experimental_job_id";
 /**
  * A rapid job must keep being polled on the rapid endpoints after a reload, so
  * the pipeline is stored alongside the id.
+ *
+ * The country is stored too: the per-result image and description lookups are
+ * country-aware, and they must follow the country the job was *run* for, not
+ * whatever the dropdown happens to show when the results are read.
  */
 interface StoredJob {
   jobId: string;
   rapid: boolean;
+  country: string;
 }
 
 function readStoredJob(): StoredJob | null {
@@ -27,9 +32,11 @@ function readStoredJob(): StoredJob | null {
     const raw = sessionStorage.getItem(JOB_ID_KEY);
     if (!raw) return null;
     // Older sessions stored a bare id string; treat those as standard jobs.
-    if (!raw.startsWith("{")) return { jobId: raw, rapid: false };
+    if (!raw.startsWith("{")) return { jobId: raw, rapid: false, country: "uk" };
     const parsed = JSON.parse(raw) as Partial<StoredJob>;
-    return parsed.jobId ? { jobId: parsed.jobId, rapid: !!parsed.rapid } : null;
+    return parsed.jobId
+      ? { jobId: parsed.jobId, rapid: !!parsed.rapid, country: parsed.country ?? "uk" }
+      : null;
   } catch {
     return null;
   }
@@ -56,6 +63,7 @@ export function useSearchExperimentalJob() {
   const [job, setJobState] = useState<StoredJob | null>(readStoredJob);
   const jobId = job?.jobId ?? null;
   const isRapid = job?.rapid ?? false;
+  const jobCountry = job?.country ?? "uk";
 
   function setJob(next: StoredJob | null) {
     writeStoredJob(next);
@@ -74,14 +82,15 @@ export function useSearchExperimentalJob() {
       borough?: string | null;
       geodataframe?: unknown;
       rapid?: boolean;
+      country?: string;
     }) => {
       const res = await submitSearch({ ...input, apiKey: apiKey as string });
       // Carry the pipeline through so polling targets the right endpoints.
-      return { jobId: res.jobId, rapid: !!input.rapid };
+      return { jobId: res.jobId, rapid: !!input.rapid, country: input.country ?? "uk" };
     },
     onSuccess: (data) => {
       setExtraResults([]); // a fresh search starts with a clean slate
-      setJob({ jobId: data.jobId, rapid: data.rapid });
+      setJob({ jobId: data.jobId, rapid: data.rapid, country: data.country });
     },
   });
 
@@ -184,6 +193,8 @@ export function useSearchExperimentalJob() {
     reset,
     addResults,
     jobId,
+    /** Country the active job was run for — drives the result image lookups. */
+    jobCountry,
     isRunning,
     isComplete,
     results,
