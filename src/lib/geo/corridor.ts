@@ -6,7 +6,7 @@
  */
 import { polygonToCells, latLngToCell } from "h3-js";
 import wellknown from "wellknown";
-import { toBNG, toWGS84 } from "./projection";
+import { toMetric, fromMetric, type CountryCode } from "./projection";
 import type { AssessmentCell, CorridorSummary, DroneRoute } from "./types";
 
 // geopandas GeoSeries.buffer default is resolution=16 (16 segments per 90°
@@ -17,16 +17,17 @@ const CAP_SEGMENTS = 32;
 /**
  * Buffered corridor polygon between origin and destination, as a WGS84 ring of
  * [lon, lat] points. Ports generate_corridor_polygon: the buffer is computed in
- * planar EPSG:27700 metres (a "stadium" around the straight line) then
+ * planar metres in the country's grid (a "stadium" around the line) then
  * reprojected back to WGS84.
  */
 export function corridorPolygon(
   origin: [number, number], // [lat, lon]
   dest: [number, number],
   bufferMetres: number,
+  country: CountryCode = "uk",
 ): [number, number][] {
-  const [oE, oN] = toBNG([origin[1], origin[0]]);
-  const [dE, dN] = toBNG([dest[1], dest[0]]);
+  const [oE, oN] = toMetric([origin[1], origin[0]], country);
+  const [dE, dN] = toMetric([dest[1], dest[0]], country);
 
   const dx = dE - oE;
   const dy = dN - oN;
@@ -39,7 +40,7 @@ export function corridorPolygon(
   const baseAngle = Math.atan2(uy, ux);
 
   const ring: [number, number][] = [];
-  const pushBNG = (e: number, n: number) => ring.push(toWGS84([e, n]));
+  const pushBNG = (e: number, n: number) => ring.push(fromMetric([e, n], country));
 
   // Left edge: origin -> dest, offset by +r·n
   pushBNG(oE + r * nx, oN + r * ny);
@@ -98,11 +99,15 @@ function num(v: unknown): number {
 }
 
 /**
- * Adapt the /eikon_safest_route_pathfinder response (WKT geometry in EPSG:27700)
+ * Adapt the /eikon_safest_route_pathfinder response (WKT geometry in the
+ * country's metric CRS)
  * to the routes list. Ports _parse_pathfinder_response: parse WKT, reproject to
  * WGS84, pick one recommended route by (combined_total_rank, risk_threshold).
  */
-export function parsePathfinderResponse(routesGdfJson: string): DroneRoute[] {
+export function parsePathfinderResponse(
+  routesGdfJson: string,
+  country: CountryCode = "uk",
+): DroneRoute[] {
   const rows = toRows(JSON.parse(routesGdfJson));
   if (rows.length === 0) return [];
 
@@ -121,8 +126,22 @@ export function parsePathfinderResponse(routesGdfJson: string): DroneRoute[] {
     let coords: [number, number][] = [];
     if (geom && geom.type === "LineString") {
       coords = (geom.coordinates as [number, number][]).map(
-        ([x, y]) => toWGS84([x, y]),
+        ([x, y]) => fromMetric([x, y], country),
       );
+    } else if (geom && geom.type === "MultiLineString") {
+      // A path split into segments still draws as one line; concatenating is
+      // what the pydeck PathLayer showed. Without this the route parses to an
+      // empty path and silently disappears from the map while still appearing
+      // in the routes table, which reads its length from route_length.
+      coords = (geom.coordinates as [number, number][][])
+        .flat()
+        .map(([x, y]) => fromMetric([x, y], country));
+    } else if (geom) {
+      console.warn(
+        `[corridor] route ${idx} has unsupported geometry type "${geom.type}"; it will not be drawn.`,
+      );
+    } else {
+      console.warn(`[corridor] route ${idx} has unparseable geometry; it will not be drawn.`);
     }
     return {
       percentile: Math.trunc(num(row.risk_threshold)),
@@ -197,10 +216,16 @@ export function rerankRoutes(routes: DroneRoute[], safetyWeight = 0.5): DroneRou
   return ranked;
 }
 
-/** Route geometry as EPSG:27700 WKT (for CSV export). Coords are [lon, lat]. */
-export function routeToWktBNG(coords: [number, number][]): string {
+/**
+ * Route geometry as WKT in the country's metric CRS (for CSV export).
+ * Input coords are [lon, lat]. Use `metricCrs(country)` to label the column.
+ */
+export function routeToWkt(
+  coords: [number, number][],
+  country: CountryCode = "uk",
+): string {
   const pts = coords.map(([lon, lat]) => {
-    const [e, n] = toBNG([lon, lat]);
+    const [e, n] = toMetric([lon, lat], country);
     return `${e} ${n}`;
   });
   return `LINESTRING (${pts.join(", ")})`;

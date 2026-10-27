@@ -20,6 +20,8 @@ export interface DroneResult {
   corridorRing: [number, number][]; // [lon, lat]
   origin: [number, number]; // [lat, lon]
   dest: [number, number];
+  /** Country the run was for — selects the metric CRS used to read it back. */
+  country: string;
 }
 
 export interface DroneRunParams {
@@ -78,7 +80,7 @@ export function useDroneCorridor() {
       setPhase("assessing");
       try {
         // 1–2. Corridor polygon + H3 res-9 cells (client geo).
-        const ring = corridorPolygon(origin, dest, bufferMetres);
+        const ring = corridorPolygon(origin, dest, bufferMetres, country);
         const h9Cells = corridorH3Cells(ring, 9);
         if (h9Cells.length === 0) {
           setError("No H3 cells found in the corridor. Try increasing the buffer width.");
@@ -97,10 +99,14 @@ export function useDroneCorridor() {
         });
         const assessmentRows = assessment as unknown as AssessmentCell[];
 
-        // 4. Origin/dest parent hexes at res 7, then pathfinder (backend).
+        // 4. Origin/dest cells at res 9, then pathfinder (backend).
+        // Res 9 matches both the assessment grid and the cells the H3 hex ID
+        // inputs accept, so entering a hex ID round-trips back to that exact
+        // cell and a lat/lon lands within ~100m rather than a res-7 parent's
+        // ~1km.
         setPhase("routing");
-        const originHex = geoToH3(origin[0], origin[1], 7);
-        const destHex = geoToH3(dest[0], dest[1], 7);
+        const originHex = geoToH3(origin[0], origin[1], 9);
+        const destHex = geoToH3(dest[0], dest[1], 9);
         const { routesGdf } = await findSafestRoutes({
           apiKey,
           originHex,
@@ -110,10 +116,10 @@ export function useDroneCorridor() {
         });
 
         // 5–6. Parse routes + summary (client geo).
-        const routes = parsePathfinderResponse(routesGdf);
+        const routes = parsePathfinderResponse(routesGdf, country);
         const summary = corridorSummary(assessmentRows, routes);
 
-        setResult({ assessment: assessmentRows, routes, summary, corridorRing: ring, origin, dest });
+        setResult({ assessment: assessmentRows, routes, summary, corridorRing: ring, origin, dest, country });
         setPhase("complete");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Assessment failed");

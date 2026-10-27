@@ -5,7 +5,8 @@ import dynamic from "next/dynamic";
 import { cellToLatLng } from "h3-js";
 import { useDroneCorridor, type DroneResult } from "@/hooks/useDroneCorridor";
 import { classifyRiskScores, riskScoreToColor, type RGBA } from "@/lib/geo/risk";
-import { routeToWktBNG } from "@/lib/geo/corridor";
+import { routeToWkt } from "@/lib/geo/corridor";
+import { metricCrs } from "@/lib/geo/projection";
 import type { AssessmentCell, DroneRoute } from "@/lib/geo/types";
 import type {
   Basemap,
@@ -281,7 +282,7 @@ function Results({
   safetyWeight: number;
   onRerank: (w: number) => void;
 }) {
-  const { assessment, routes, summary, corridorRing, origin, dest } = result;
+  const { assessment, routes, summary, corridorRing, origin, dest, country } = result;
 
   // Risk classification (Jenks) → per-hex colour.
   const { hexes, classColors, binEdges, maxScore } = useMemo(() => {
@@ -381,7 +382,9 @@ function Results({
       )}
 
       {view === "Route Map" && routes.length > 0 && <RouteTable routes={routes} withRanks />}
-      {view === "Data Table" && <DataTable routes={routes} assessment={assessment} />}
+      {view === "Data Table" && (
+        <DataTable routes={routes} assessment={assessment} country={country} />
+      )}
     </div>
   );
 }
@@ -436,10 +439,13 @@ function RouteTable({ routes }: { routes: DroneRoute[]; withRanks?: boolean }) {
 function DataTable({
   routes,
   assessment,
+  country,
 }: {
   routes: DroneRoute[];
   /** Per-cell risk assessment behind the map — every cell, every column. */
   assessment: AssessmentCell[];
+  /** Selects the metric CRS the exported WKT is written in. */
+  country: string;
 }) {
   // Every raw column the assessment endpoint returned, across all cells.
   const assessmentColumns = Array.from(
@@ -489,7 +495,7 @@ function DataTable({
       "Length Rank",
       "Combined Rank",
       "Recommended",
-      "Geometry (WKT)",
+      `Geometry (WKT, ${metricCrs(country)})`,
     ];
     const lines = routes.map((r) =>
       [
@@ -500,7 +506,7 @@ function DataTable({
         r.routeLengthRank,
         r.combinedRank,
         r.recommended ? "Yes" : "No",
-        `"${routeToWktBNG(r.coords)}"`,
+        `"${routeToWkt(r.coords, country)}"`,
       ].join(","),
     );
     const csv = [cols.join(","), ...lines].join("\n");
