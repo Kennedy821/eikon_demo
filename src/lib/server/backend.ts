@@ -81,6 +81,15 @@ export const BACKEND = {
   // ---- similarity (unified endpoint; similarity_type in the payload selects
   //      visual / descriptive / combined / latent / holistic / mm) ----
   abstractedSimilarity: { base: NGROK_BASE, path: "/abstracted_similarity_comparison", method: "POST" },
+  // Country-aware variant: same payload plus origin_country/dest_country,
+  // which are resolved per location via `locationCountry` first.
+  abstractedSimilarityAnyCountry: {
+    base: NGROK_BASE,
+    path: "/abstracted_similarity_comparison_any_country",
+    method: "POST",
+  },
+  // Resolves a [lat, lon] to the country that serves it.
+  locationCountry: { base: NGROK_BASE, path: "/get_location_country", method: "POST" },
 
   // ---- object detection (ngrok) ----
   objectsDetected: { base: NGROK_BASE, path: "/get_objects_detected_in_location", method: "POST" },
