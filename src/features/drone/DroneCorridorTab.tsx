@@ -46,6 +46,14 @@ const COUNTRIES = [
 ] as const;
 
 type CountryValue = (typeof COUNTRIES)[number]["value"];
+// Canvas size the corridor is fitted to. Height matches DroneMap's default;
+// width is the 4fr column it sits in at a typical desktop width.
+const MAP_WIDTH_PX = 900;
+const MAP_HEIGHT_PX = 540;
+const TILE_SIZE_PX = 512;
+/** Leaves a margin so the corridor does not touch the canvas edge. */
+const MAP_FIT_PADDING = 0.85;
+
 const RESULT_VIEWS = ["Risk Map", "Route Map", "Data Table"] as const;
 type ResultView = (typeof RESULT_VIEWS)[number];
 
@@ -297,10 +305,22 @@ function Results({
     return { hexes, classColors: cls.classColors, binEdges: cls.binEdges, maxScore };
   }, [assessment]);
 
-  const markers: MarkerDatum[] = [
-    { lat: origin[0], lon: origin[1], color: [0, 200, 0, 220], tooltip: `<div>Origin</div><div>${origin[0].toFixed(5)}, ${origin[1].toFixed(5)}</div>` },
-    { lat: dest[0], lon: dest[1], color: [255, 215, 0, 240], tooltip: `<div>Destination</div><div>${dest[0].toFixed(5)}, ${dest[1].toFixed(5)}</div>` },
-  ];
+  // The pathfinder routes between H3 cells, so a route begins and ends at a
+  // cell centre rather than at the requested coordinate. Anchoring the markers
+  // to the route's own endpoints keeps them on the line instead of stranding
+  // them up to a cell's width away. Before a route exists they fall back to the
+  // requested points.
+  const markers: MarkerDatum[] = useMemo(() => {
+    const route = routes.find((r) => r.recommended) ?? routes[0];
+    const start = route?.coords[0];
+    const end = route?.coords[route.coords.length - 1];
+    const o = start ? { lat: start[1], lon: start[0] } : { lat: origin[0], lon: origin[1] };
+    const d = end ? { lat: end[1], lon: end[0] } : { lat: dest[0], lon: dest[1] };
+    return [
+      { ...o, color: [0, 200, 0, 220], tooltip: `<div>Origin</div><div>${o.lat.toFixed(5)}, ${o.lon.toFixed(5)}</div>` },
+      { ...d, color: [255, 215, 0, 240], tooltip: `<div>Destination</div><div>${d.lat.toFixed(5)}, ${d.lon.toFixed(5)}</div>` },
+    ];
+  }, [routes, origin, dest]);
 
   const center = useMemo(() => viewFromCorridor(corridorRing, origin, dest), [corridorRing, origin, dest]);
   const recommended = routes.find((r) => r.recommended) ?? null;
@@ -738,18 +758,39 @@ function viewFromCorridor(
   origin: [number, number],
   dest: [number, number],
 ): { latitude: number; longitude: number; zoom: number } {
-  let spread: number;
-  if (ring.length) {
-    const lons = ring.map((p) => p[0]);
-    const lats = ring.map((p) => p[1]);
-    spread = Math.max(...lats) - Math.min(...lats) + (Math.max(...lons) - Math.min(...lons));
-  } else {
-    spread = Math.abs(origin[0] - dest[0]) + Math.abs(origin[1] - dest[1]);
-  }
-  const zoom = spread > 0.2 ? 8 : spread > 0.1 ? 9 : 10;
+  const pts: [number, number][] = ring.length
+    ? ring
+    : [
+        [origin[1], origin[0]],
+        [dest[1], dest[0]],
+      ];
+  const lons = pts.map((p) => p[0]);
+  const lats = pts.map((p) => p[1]);
+  const minLon = Math.min(...lons);
+  const maxLon = Math.max(...lons);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+
+  // Fit the corridor's bounding box to the canvas rather than bucketing a
+  // lat+lon "spread" into fixed zoom steps. That bucketing was tuned on UK
+  // corridors and put every corridor at zoom 8, which is roughly right for a
+  // 36km UK route but ~3.5 levels too wide for an 8km Hong Kong one, shrinking
+  // the route to a few pixels.
+  const mercatorY = (lat: number) => {
+    const s = Math.sin((lat * Math.PI) / 180);
+    return Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+  };
+  const lonFraction = Math.max(maxLon - minLon, 1e-6) / 360;
+  const latFraction = Math.max(Math.abs(mercatorY(maxLat) - mercatorY(minLat)), 1e-6);
+  const zoom =
+    Math.min(
+      Math.log2(MAP_WIDTH_PX / (TILE_SIZE_PX * lonFraction)),
+      Math.log2(MAP_HEIGHT_PX / (TILE_SIZE_PX * latFraction)),
+    ) + Math.log2(MAP_FIT_PADDING);
+
   return {
-    latitude: (origin[0] + dest[0]) / 2,
-    longitude: (origin[1] + dest[1]) / 2,
-    zoom,
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLon + maxLon) / 2,
+    zoom: Math.max(2, Math.min(15, zoom)),
   };
 }
