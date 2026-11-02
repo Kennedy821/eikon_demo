@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -77,6 +78,16 @@ export default function LoginPage() {
         >
           {busy ? "Signing in…" : "Sign in"}
         </button>
+
+        <p
+          className="text-center text-sm text-white/70"
+          style={{ textShadow: "0 1px 2px rgba(0,0,0,0.45)" }}
+        >
+          No account yet?{" "}
+          <Link href="/signup" className="font-medium text-white underline">
+            Register
+          </Link>
+        </p>
       </form>
     </main>
   );

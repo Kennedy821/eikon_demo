@@ -35,6 +35,17 @@ export function login(email: string, password: string) {
   return postJson<{ apiKey: string; email: string }>("/api/eikon/auth", { email, password });
 }
 
+// ---- registration ----
+export function registerUser(input: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  accountType: string;
+}) {
+  return postJson<{ email: string }>("/api/eikon/register", input);
+}
+
 // ---- credits ----
 export function getCredits(apiKey: string) {
   return postJson<{ balance: number | null }>("/api/eikon/credits", { apiKey });

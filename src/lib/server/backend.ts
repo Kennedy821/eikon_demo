@@ -37,6 +37,13 @@ export const BACKEND = {
   // ---- auth (pagekite, via eikonsai.utils.get_api_key_from_credentials) ----
   auth: { base: NGROK_BASE, path: "/eikon_get_api_key_for_user", method: "POST" },
 
+  // ---- registration (ngrok) — the two endpoints the Streamlit sign-up form
+  //      used (eikon_registration_form.py): one checks whether the email is
+  //      already an EIKON account, the other writes the new user row and seeds
+  //      their credit balance. The api_key is minted server-side by the backend.
+  checkUserEmail: { base: NGROK_BASE, path: "/check_user_email_eikon_user", method: "POST" },
+  addNewUser: { base: NGROK_BASE, path: "/add_new_eikon_user", method: "POST" },
+
   // ---- credits (ngrok) ----
   credits: { base: NGROK_BASE, path: "/check_eikon_api_credits", method: "POST" },
 
