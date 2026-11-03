@@ -8,14 +8,21 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCredits, formatCredits } from "@/hooks/useCredits";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 
-/** Top-level tabs — mirror active_main_tab options in eikon_demo_app_beta.py. */
-const TABS: readonly { href: string; label: string; adminOnly?: boolean }[] = [
+/** Top-level tabs — mirror active_main_tab options in eikon_demo_app_beta.py.
+ *  `hidden` keeps a tab out of the nav while its page and API routes stay in
+ *  place; clear the flag to bring it back. */
+const TABS: readonly {
+  href: string;
+  label: string;
+  adminOnly?: boolean;
+  hidden?: boolean;
+}[] = [
   { href: "/chat", label: "Eikon AI" },
   { href: "/search", label: "Search" },
   { href: "/context", label: "Context" },
   { href: "/similarity", label: "Similarity" },
-  { href: "/portfolio", label: "Portfolio" },
-  { href: "/object-detection", label: "Object Detection" },
+  { href: "/portfolio", label: "Portfolio", hidden: true },
+  { href: "/object-detection", label: "Object Detection", hidden: true },
   { href: "/drone-corridor", label: "Drone Corridor" },
   { href: "/remote-assessment", label: "Remote Inspection" },
   { href: "/memory", label: "Memory" },
@@ -30,7 +37,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { authenticated, hydrated, userEmail, logout } = useAuth();
   const { data: credits } = useCredits();
   const isAdmin = useIsAdmin();
-  const tabs = TABS.filter((t) => !t.adminOnly || isAdmin);
+  const tabs = TABS.filter((t) => !t.hidden && (!t.adminOnly || isAdmin));
 
   useEffect(() => {
     if (hydrated && !authenticated) router.replace("/login");
