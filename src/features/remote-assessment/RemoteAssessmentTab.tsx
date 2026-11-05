@@ -34,6 +34,38 @@ const AREA_MODE = "UK - area";
 const MAP_MODE = "Map selection";
 const UPLOAD_MODE = "GeoJSON upload";
 const AOI_MODES = [AREA_MODE, MAP_MODE, UPLOAD_MODE];
+
+/**
+ * The country only moves the drawing map to the right part of the world — the
+ * submit route resolves the country from the AOI itself. The named-area list is
+ * UK areas, so that mode is offered for the UK alone.
+ */
+const COUNTRIES = [
+  {
+    value: "uk",
+    label: "United Kingdom",
+    supportsAreaMode: true,
+    mapView: { longitude: -2.5, latitude: 54, zoom: 4.2 },
+  },
+  {
+    value: "hongkong",
+    label: "Hong Kong",
+    supportsAreaMode: false,
+    mapView: { longitude: 114.15, latitude: 22.35, zoom: 9.5 },
+  },
+] as const;
+
+type CountryValue = (typeof COUNTRIES)[number]["value"];
+
+function countryDef(value: CountryValue) {
+  return COUNTRIES.find((c) => c.value === value) ?? COUNTRIES[0];
+}
+
+function aoiModesFor(country: CountryValue): string[] {
+  return countryDef(country).supportsAreaMode
+    ? AOI_MODES
+    : AOI_MODES.filter((m) => m !== AREA_MODE);
+}
 // Object classes live in src/lib/remoteInspection.ts so the Admin Tools cost
 // calculator and this tab can never drift apart.
 const RESULT_VIEWS = ["Heat Map", "By Location", "Data Table"] as const;
@@ -71,6 +103,7 @@ function formatDuration(seconds: number) {
 }
 
 export function RemoteAssessmentTab() {
+  const [country, setCountry] = useState<CountryValue>("uk");
   const [aoiMode, setAoiMode] = useState(AREA_MODE);
   const [areaName, setAreaName] = useState((UK_AREAS as string[])[0] ?? "");
   const [aoi, setAoi] = useState<Feature<Polygon> | null>(null);
@@ -97,6 +130,12 @@ export function RemoteAssessmentTab() {
     cells,
     error,
   } = useRemoteAssessment();
+
+  function onCountryChange(next: CountryValue) {
+    setCountry(next);
+    setAoi(null);
+    if (!aoiModesFor(next).includes(aoiMode)) setAoiMode(MAP_MODE);
+  }
 
   const isMapMode = aoiMode === MAP_MODE;
   const isUploadMode = aoiMode === UPLOAD_MODE;
@@ -269,13 +308,28 @@ export function RemoteAssessmentTab() {
             <h2 className="text-sm font-semibold text-eikon-midnight">Assessment parameters</h2>
 
             <label className="block text-sm">
+              <span className="mb-1 block text-eikon-muted">Country</span>
+              <select
+                value={country}
+                onChange={(e) => onCountryChange(e.target.value as CountryValue)}
+                className="w-full rounded border px-2 py-1.5"
+              >
+                {COUNTRIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block text-sm">
               <span className="mb-1 block text-eikon-muted">Area of interest</span>
               <select
                 value={aoiMode}
                 onChange={(e) => setAoiMode(e.target.value)}
                 className="w-full rounded border px-2 py-1.5"
               >
-                {AOI_MODES.map((m) => (
+                {aoiModesFor(country).map((m) => (
                   <option key={m}>{m}</option>
                 ))}
               </select>
@@ -299,7 +353,11 @@ export function RemoteAssessmentTab() {
             {isMapMode && (
               <div className="space-y-1.5">
                 <span className="block text-sm text-eikon-muted">Area</span>
-                <PolygonDrawMap onChange={setAoi} />
+                <PolygonDrawMap
+                  key={country}
+                  onChange={setAoi}
+                  initialView={countryDef(country).mapView}
+                />
                 {aoi && (
                   <p className="text-xs text-green-700">{aoiKm2.toFixed(1)} km²</p>
                 )}
