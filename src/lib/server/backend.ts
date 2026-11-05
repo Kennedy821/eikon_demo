@@ -144,6 +144,14 @@ export const BACKEND = {
     path: "/get_eikon_remote_location_verification_v2",
     method: "POST",
   },
+  // Country-aware variant of the fast route. Same payload plus `country`
+  // ("uk" or "hongkong") and `spatial_resolution_for_search`. There is no
+  // standard-coverage counterpart, so anything outside the UK runs fast.
+  remoteVerificationAnyCountry: {
+    base: NGROK_BASE,
+    path: "/get_eikon_remote_location_verification_v2_any_country",
+    method: "POST",
+  },
   remoteVerificationStatus: {
     base: NGROK_BASE,
     path: "/check_if_eikon_remote_location_verification_job_complete",
