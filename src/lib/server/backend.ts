@@ -134,6 +134,11 @@ export const BACKEND = {
   // latest checkpoint and (on completion) the full result. "fast" execution
   // uses the _v2 route and only covers a subset of very large areas; "standard"
   // covers every cell.
+  //
+  // The _any_country pair takes `country` ("uk" or "hongkong") and serves a
+  // custom AOI anywhere. They reject `area_list` — on those routes an
+  // aoi_type of "standard" means the whole country — so a named UK area still
+  // goes to the original pair, which is the only one that accepts it.
   remoteVerificationStandard: {
     base: NGROK_BASE,
     path: "/get_eikon_remote_location_verification",
@@ -144,10 +149,12 @@ export const BACKEND = {
     path: "/get_eikon_remote_location_verification_v2",
     method: "POST",
   },
-  // Country-aware variant of the fast route. Same payload plus `country`
-  // ("uk" or "hongkong") and `spatial_resolution_for_search`. There is no
-  // standard-coverage counterpart, so anything outside the UK runs fast.
-  remoteVerificationAnyCountry: {
+  remoteVerificationStandardAnyCountry: {
+    base: NGROK_BASE,
+    path: "/get_eikon_remote_location_verification_any_country",
+    method: "POST",
+  },
+  remoteVerificationFastAnyCountry: {
     base: NGROK_BASE,
     path: "/get_eikon_remote_location_verification_v2_any_country",
     method: "POST",

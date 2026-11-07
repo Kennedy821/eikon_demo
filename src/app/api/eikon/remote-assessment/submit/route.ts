@@ -22,23 +22,73 @@ import {
  *                          job_id, unique_id }
  * inspection_list is a single object class (e.g. "solar_panels") or "all".
  *
- * A drawn or uploaded AOI can sit anywhere, so its country is resolved from
- * the geometry before the call. Outside the UK the request goes to
- * _v2_any_country, which additionally wants `country` and
- * `spatial_resolution_for_search`. Named areas are UK areas and are unchanged.
+ * A drawn or uploaded AOI can sit anywhere, so it goes to the _any_country
+ * pair with the `country` resolved from its own geometry. A named area stays
+ * on the original pair: the country-aware routes reject `area_list`, since an
+ * aoi_type of "standard" means the whole country to them. Execution mode picks
+ * between fast and standard within whichever pair is used.
  */
 
 const UK = "uk";
-const UNKNOWN_COUNTRY = "unknown";
 /** The backend accepts these for `country`; anything else it rejects. */
 const SUPPORTED_COUNTRIES = new Set([UK, "hongkong"]);
+/** Cap on country lookups per submit, so an intricate AOI cannot fan out. */
+const MAX_COUNTRY_LOOKUPS = 8;
 
 /**
- * Centre of the AOI's bounding box, used as the point to resolve the country
- * from. Walking the coordinates handles Polygon and MultiPolygon alike without
- * pulling a geometry library into the server bundle.
+ * Points to try the country lookup against, best first: the centre of the
+ * AOI's bounding box, then its corners, then the geometry's own vertices. The
+ * centre alone is not enough — the middle of a box drawn over Hong Kong lands
+ * in Victoria Harbour, where the lookup answers null and the AOI would be
+ * taken for a country it is nowhere near. A vertex on land settles it.
  */
-function representativePoint(geodataframe: unknown): [number, number] | null {
+function candidatePoints(geodataframe: unknown): [number, number][] {
+  const box = boundingBox(geodataframe);
+  if (!box) return [];
+  const { minLon, minLat, maxLon, maxLat } = box;
+
+  const points: [number, number][] = [
+    [(minLat + maxLat) / 2, (minLon + maxLon) / 2],
+    [minLat, minLon],
+    [maxLat, maxLon],
+    [minLat, maxLon],
+    [maxLat, minLon],
+  ];
+
+  for (const v of vertices(geodataframe)) {
+    if (points.length >= MAX_COUNTRY_LOOKUPS) break;
+    points.push(v);
+  }
+  return points.slice(0, MAX_COUNTRY_LOOKUPS);
+}
+
+/** Every [lon, lat] pair in the collection, as [lat, lon]. */
+function vertices(geodataframe: unknown): [number, number][] {
+  const out: [number, number][] = [];
+  const walk = (node: unknown): void => {
+    if (!Array.isArray(node) || out.length >= MAX_COUNTRY_LOOKUPS) return;
+    if (typeof node[0] === "number" && typeof node[1] === "number") {
+      const [lon, lat] = node as [number, number];
+      if (Number.isFinite(lon) && Number.isFinite(lat)) out.push([lat, lon]);
+      return;
+    }
+    for (const child of node) walk(child);
+  };
+  const features = (geodataframe as { features?: unknown })?.features;
+  if (Array.isArray(features)) {
+    for (const f of features) {
+      walk((f as { geometry?: { coordinates?: unknown } })?.geometry?.coordinates);
+    }
+  }
+  return out;
+}
+
+function boundingBox(geodataframe: unknown): {
+  minLon: number;
+  minLat: number;
+  maxLon: number;
+  maxLat: number;
+} | null {
   let minLon = Infinity;
   let minLat = Infinity;
   let maxLon = -Infinity;
@@ -65,24 +115,40 @@ function representativePoint(geodataframe: unknown): [number, number] | null {
   }
 
   if (!Number.isFinite(minLon) || !Number.isFinite(minLat)) return null;
-  return [(minLat + maxLat) / 2, (minLon + maxLon) / 2];
+  return { minLon, minLat, maxLon, maxLat };
 }
 
 /**
- * Resolve the country serving a point. A failed lookup yields "unknown", which
- * the caller treats as the UK so a country-service hiccup cannot break the UK
- * selections that worked before this endpoint existed.
+ * Resolve the country serving a point. The endpoint answers 200 with
+ * { country: null } for a point it does not cover — open water, or anywhere
+ * outside the served countries — so a null is an answer, not a failure, and
+ * the caller moves on to the next candidate point.
  */
-async function countryFor(location: [number, number], apiKey: string): Promise<string> {
+async function countryFor(
+  location: [number, number],
+  apiKey: string,
+): Promise<string | null> {
   try {
-    const res = await callBackend<{ country?: string }>("locationCountry", {
+    const res = await callBackend<{ country?: string | null }>("locationCountry", {
       json: { location, api_key: apiKey },
       timeoutMs: 20_000,
     });
-    return res?.country ?? UNKNOWN_COUNTRY;
+    return res?.country ?? null;
   } catch {
-    return UNKNOWN_COUNTRY;
+    return null;
   }
+}
+
+/** First candidate point that resolves to a country, or null if none do. */
+async function countryForAoi(
+  geodataframe: unknown,
+  apiKey: string,
+): Promise<string | null> {
+  for (const point of candidatePoints(geodataframe)) {
+    const country = await countryFor(point, apiKey);
+    if (country) return country;
+  }
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -126,27 +192,39 @@ export async function POST(req: NextRequest) {
           job_id: jobId,
         };
 
-    let endpoint: BackendCall =
-      executionMode === "standard" ? BACKEND.remoteVerificationStandard : BACKEND.remoteVerificationFast;
+    const isStandardCoverage = executionMode === "standard";
+    let endpoint: BackendCall = isStandardCoverage
+      ? BACKEND.remoteVerificationStandard
+      : BACKEND.remoteVerificationFast;
 
-    // Only a custom AOI can fall outside the UK — the area list is UK areas.
+    // Only a custom AOI can fall outside the UK — the named-area list is UK
+    // areas, and the country-aware routes do not accept it.
     if (geodataframe) {
-      const point = representativePoint(geodataframe);
-      const country = point ? await countryFor(point, apiKey) : UNKNOWN_COUNTRY;
+      const country = await countryForAoi(geodataframe, apiKey);
 
-      if (country !== UK && country !== UNKNOWN_COUNTRY) {
-        if (!SUPPORTED_COUNTRIES.has(country)) {
-          return NextResponse.json(
-            {
-              error: `Remote inspection doesn't cover ${country} yet. Draw an area over the UK or Hong Kong.`,
-            },
-            { status: 422 },
-          );
-        }
-        endpoint = BACKEND.remoteVerificationAnyCountry;
-        payload.country = country;
-        payload.spatial_resolution_for_search = "map selection";
+      if (!country) {
+        return NextResponse.json(
+          {
+            error:
+              "Couldn't tell which country that area is in. Draw it over land in the UK or Hong Kong.",
+          },
+          { status: 422 },
+        );
       }
+      if (!SUPPORTED_COUNTRIES.has(country)) {
+        return NextResponse.json(
+          {
+            error: `Remote inspection doesn't cover ${country} yet. Draw an area over the UK or Hong Kong.`,
+          },
+          { status: 422 },
+        );
+      }
+
+      endpoint = isStandardCoverage
+        ? BACKEND.remoteVerificationStandardAnyCountry
+        : BACKEND.remoteVerificationFastAnyCountry;
+      payload.country = country;
+      payload.spatial_resolution_for_search = "map selection";
     }
 
     pruneJobCache();
