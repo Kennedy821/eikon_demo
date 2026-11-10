@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { cellToLatLng } from "h3-js";
 import { useDroneCorridor, type DroneResult } from "@/hooks/useDroneCorridor";
-import { classifyRiskScores, riskScoreToColor, type RGBA } from "@/lib/geo/risk";
+import { classifyRiskScores, riskScoreToColor } from "@/lib/geo/risk";
+import { hexTooltip } from "@/lib/geo/hexTooltip";
+import { fitView } from "@/lib/geo/mapFit";
 import { routeToWkt } from "@/lib/geo/corridor";
 import { metricCrs } from "@/lib/geo/projection";
 import type { AssessmentCell, DroneRoute } from "@/lib/geo/types";
@@ -19,6 +21,7 @@ const DroneMap = dynamic(() => import("@/components/map/DroneMap"), {
   ssr: false,
   loading: () => <div className="h-[540px] w-full animate-pulse bg-eikon-panel" />,
 });
+const RiskLegend = dynamic(() => import("@/components/map/RiskLegend"), { ssr: false });
 
 const H9_EDGE_M = 174;
 const DEFAULT_CRITERIA = ["major industrial areas", "residential houses", "lots of buildings"];
@@ -46,13 +49,6 @@ const COUNTRIES = [
 ] as const;
 
 type CountryValue = (typeof COUNTRIES)[number]["value"];
-// Canvas size the corridor is fitted to. Height matches DroneMap's default;
-// width is the 4fr column it sits in at a typical desktop width.
-const MAP_WIDTH_PX = 900;
-const MAP_HEIGHT_PX = 540;
-const TILE_SIZE_PX = 512;
-/** Leaves a margin so the corridor does not touch the canvas edge. */
-const MAP_FIT_PADDING = 0.85;
 
 const RESULT_VIEWS = ["Risk Map", "Route Map", "Data Table"] as const;
 type ResultView = (typeof RESULT_VIEWS)[number];
@@ -381,7 +377,7 @@ function Results({
             center={center}
             basemap={basemap}
           />
-          <Legend
+          <RiskLegend
             binEdges={binEdges}
             classColors={classColors}
             maxScore={maxScore}
@@ -556,96 +552,6 @@ function DataTable({
   );
 }
 
-function Legend({
-  binEdges,
-  classColors,
-  maxScore,
-  showRouteKeys,
-  basemap,
-  onBasemap,
-  showChoropleth,
-  onToggleChoropleth,
-}: {
-  binEdges: number[];
-  classColors: RGBA[];
-  maxScore: number;
-  showRouteKeys: boolean;
-  basemap: Basemap;
-  onBasemap: (b: Basemap) => void;
-  showChoropleth: boolean;
-  onToggleChoropleth: () => void;
-}) {
-  const rgb = (c: RGBA) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-bold text-eikon-midnight">Risk Score</span>
-          <button
-            onClick={onToggleChoropleth}
-            aria-pressed={showChoropleth}
-            title="Toggle the risk colour-grade layer"
-            className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
-              showChoropleth
-                ? "border-eikon-navy bg-eikon-navy text-white"
-                : "border-gray-300 text-eikon-muted"
-            }`}
-          >
-            {showChoropleth ? "On" : "Off"}
-          </button>
-        </div>
-        <div className={showChoropleth ? "" : "opacity-40"}>
-        {classColors.map((c, i) => {
-          const lower = i === 0 ? 0 : binEdges[i - 1];
-          const upper = binEdges[i];
-          return (
-            <div key={i} className="mb-1 flex items-center gap-2">
-              <span className="inline-block h-3.5 w-4 rounded" style={{ background: rgb(c), opacity: 0.85 }} />
-              <span className="text-xs text-eikon-muted">
-                {lower.toFixed(3)} – {upper.toFixed(3)}
-              </span>
-            </div>
-          );
-        })}
-        {classColors.length === 0 && (
-          <div className="text-xs text-eikon-muted">0.000 – {maxScore.toFixed(3)}</div>
-        )}
-        </div>
-        {showRouteKeys && (
-          <div className="mt-2 border-t pt-2">
-            <div className="mb-1 text-xs font-semibold text-eikon-midnight">Routes</div>
-            <div className="mb-1 flex items-center gap-2">
-              <span className="inline-block h-1 w-4 rounded-full" style={{ background: "rgb(13,148,136)" }} />
-              <span className="text-xs text-eikon-muted">Recommended</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-block h-1 w-4 rounded-full" style={{ background: "rgb(30,45,107)" }} />
-              <span className="text-xs text-eikon-muted">Alternative</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-lg border p-3">
-        <div className="mb-2 text-xs font-bold text-eikon-midnight">Basemap</div>
-        <div className="flex flex-col gap-1">
-          {(["Dark", "Light", "Satellite"] as Basemap[]).map((b) => (
-            <button
-              key={b}
-              onClick={() => onBasemap(b)}
-              className={`rounded px-2 py-1 text-sm ${
-                basemap === b ? "bg-eikon-navy text-white" : "border text-eikon-midnight"
-              }`}
-            >
-              {b}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function CriteriaEditor({
   criteria,
   onChange,
@@ -713,84 +619,19 @@ function Field({
   );
 }
 
-// ---- tooltip + view helpers ----
-
-function hexTooltip(hexId: string, score: number, objects: unknown): string {
-  return `<div>Hex: ${hexId}</div><div>Risk: ${score.toFixed(3)}</div>${formatObjects(objects)}`;
-}
-
-function formatObjects(payload: unknown): string {
-  let parsed = payload;
-  if (typeof payload === "string") {
-    try {
-      parsed = JSON.parse(payload);
-    } catch {
-      return "<div style='margin-top:6px'>Objects: None</div>";
-    }
-  }
-  const lines: string[] = [];
-  const fmtPct = (v: unknown): string | null => {
-    if (v === null || v === undefined) return null;
-    const raw = String(v).replace("%", "").trim();
-    const n = parseFloat(raw);
-    return Number.isFinite(n) ? `${n.toFixed(2)}%` : null;
-  };
-  const title = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-      const p = fmtPct(v);
-      if (p) lines.push(`<div style='margin-left:10px;font-size:0.85em'>${title(k)}: ${p}</div>`);
-    }
-  } else if (Array.isArray(parsed)) {
-    for (const item of parsed) {
-      if (!item || typeof item !== "object") continue;
-      const o = item as Record<string, unknown>;
-      const name = (o.name ?? o.Object) as string | undefined;
-      const p = fmtPct(o.proportion_of_area_that_is_label ?? o.coverage);
-      if (name && p) lines.push(`<div style='margin-left:10px;font-size:0.85em'>${title(name)}: ${p}</div>`);
-    }
-  }
-  return `<div style='margin-top:6px'>Objects:</div>${lines.length ? lines.join("") : "<div style='margin-left:10px;font-size:0.85em'>None</div>"}`;
-}
+// ---- view helpers ----
 
 function viewFromCorridor(
   ring: [number, number][],
   origin: [number, number],
   dest: [number, number],
 ): { latitude: number; longitude: number; zoom: number } {
-  const pts: [number, number][] = ring.length
-    ? ring
-    : [
-        [origin[1], origin[0]],
-        [dest[1], dest[0]],
-      ];
-  const lons = pts.map((p) => p[0]);
-  const lats = pts.map((p) => p[1]);
-  const minLon = Math.min(...lons);
-  const maxLon = Math.max(...lons);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-
-  // Fit the corridor's bounding box to the canvas rather than bucketing a
-  // lat+lon "spread" into fixed zoom steps. That bucketing was tuned on UK
-  // corridors and put every corridor at zoom 8, which is roughly right for a
-  // 36km UK route but ~3.5 levels too wide for an 8km Hong Kong one, shrinking
-  // the route to a few pixels.
-  const mercatorY = (lat: number) => {
-    const s = Math.sin((lat * Math.PI) / 180);
-    return Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
-  };
-  const lonFraction = Math.max(maxLon - minLon, 1e-6) / 360;
-  const latFraction = Math.max(Math.abs(mercatorY(maxLat) - mercatorY(minLat)), 1e-6);
-  const zoom =
-    Math.min(
-      Math.log2(MAP_WIDTH_PX / (TILE_SIZE_PX * lonFraction)),
-      Math.log2(MAP_HEIGHT_PX / (TILE_SIZE_PX * latFraction)),
-    ) + Math.log2(MAP_FIT_PADDING);
-
-  return {
-    latitude: (minLat + maxLat) / 2,
-    longitude: (minLon + maxLon) / 2,
-    zoom: Math.max(2, Math.min(15, zoom)),
-  };
+  return fitView(
+    ring.length
+      ? ring
+      : [
+          [origin[1], origin[0]],
+          [dest[1], dest[0]],
+        ],
+  );
 }

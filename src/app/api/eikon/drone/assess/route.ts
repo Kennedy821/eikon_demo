@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callBackend, BackendError } from "@/lib/server/backend";
+import { BackendError } from "@/lib/server/backend";
+import { fetchAssessment, workerAwakeCheck } from "@/lib/server/assessment";
 
 /**
  * POST /api/eikon/drone/assess  { apiKey, criteria[], h3Cells[], country }  ->
  *   { assessment: AssessmentCell[] }
  *
- * Ports run_corridor_assessment: first checks the worker is awake
- * (POST /eikon_search_worker_awake), then POSTs the H3 cells + criteria to
- * /run_assessment_custom_polygon_cuda and returns the parsed assessment records.
- * A single POST (no retries) — matching the app's deliberate no-retry behaviour.
+ * The corridor's own country comes from the origin/destination presets, so it
+ * is taken from the request rather than resolved from the geometry.
  */
 const VALID_COUNTRIES = ["uk", "hongkong"];
 
@@ -36,39 +35,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Worker-awake gate.
-    try {
-      const awake = await callBackend<{ status?: string }>("workerAwake", {
-        json: { check: "placeholder" },
-        timeoutMs: 30_000,
-      });
-      if (awake?.status !== "awake") {
-        return NextResponse.json(
-          { error: "Eikon assessment server is not available right now. Please try again shortly." },
-          { status: 503 },
-        );
-      }
-    } catch (exc) {
-      return NextResponse.json(
-        { error: `Could not reach Eikon assessment server: ${exc instanceof Error ? exc.message : exc}` },
-        { status: 502 },
-      );
-    }
+    const gate = await workerAwakeCheck();
+    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
-    const data = await callBackend<{ assessment_result?: string }>("corridorAssessment", {
-      json: {
-        api_key: apiKey,
-        assessment_criteria: criteria,
-        h3_cells: h3Cells,
-        country: countryValue,
-      },
-      timeoutMs: 1_200_000, // corridors can take several minutes
+    const assessment = await fetchAssessment({
+      apiKey,
+      criteria,
+      h3Cells,
+      country: countryValue,
     });
-
-    const assessment = data?.assessment_result ? JSON.parse(data.assessment_result) : [];
-    // assessment_result is a column-oriented dict (pd.DataFrame.from_dict); flatten to rows.
-    const rows = Array.isArray(assessment) ? assessment : columnsToRows(assessment);
-    return NextResponse.json({ assessment: rows });
+    return NextResponse.json({ assessment });
   } catch (err) {
     const status = err instanceof BackendError ? err.status : 500;
     return NextResponse.json(
@@ -76,15 +52,4 @@ export async function POST(req: NextRequest) {
       { status },
     );
   }
-}
-
-function columnsToRows(parsed: Record<string, Record<string, unknown>>): Record<string, unknown>[] {
-  const cols = Object.keys(parsed);
-  if (cols.length === 0) return [];
-  const idx = Object.keys(parsed[cols[0]] ?? {});
-  return idx.map((i) => {
-    const row: Record<string, unknown> = {};
-    for (const c of cols) row[c] = parsed[c]?.[i];
-    return row;
-  });
 }

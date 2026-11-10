@@ -468,6 +468,22 @@ export function countAoiTiles(features: AoiFeature[]): number {
   return cells.size;
 }
 
+/**
+ * Every H3 cell the features cover, mapped to the location it came from. The
+ * assessment endpoint takes a flat list of cells and returns no location id of
+ * its own, so this is what lets results be grouped back per uploaded location.
+ * A cell shared by two overlapping features is attributed to the first.
+ */
+export function aoiCellOwners(features: AoiFeature[]): Map<string, string> {
+  const owners = new Map<string, string>();
+  for (const f of features) {
+    for (const c of geometryCells(f.geometry)) {
+      if (!owners.has(c)) owners.set(c, f.properties.unique_id);
+    }
+  }
+  return owners;
+}
+
 /** Rough lon/lat bounds across features, for map framing. */
 export function featureBounds(
   features: AoiFeature[],

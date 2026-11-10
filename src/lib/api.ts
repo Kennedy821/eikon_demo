@@ -170,6 +170,24 @@ export function assessCorridor(input: {
   return postJson<{ assessment: Record<string, unknown>[] }>("/api/eikon/drone/assess", input);
 }
 
+/**
+ * Risk assessment over an area of interest — the corridor assessment without
+ * the corridor. The country is resolved server-side from the AOI geometry;
+ * `country` is only a fallback for when that lookup comes back empty.
+ */
+export function assessArea(input: {
+  apiKey: string;
+  criteria: string[];
+  h3Cells: string[];
+  geodataframe: unknown;
+  country?: string;
+}) {
+  return postJson<{ assessment: Record<string, unknown>[]; country: string }>(
+    "/api/eikon/risk-assessment",
+    input,
+  );
+}
+
 export function findSafestRoutes(input: {
   apiKey: string;
   originHex: string;

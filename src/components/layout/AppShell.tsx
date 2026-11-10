@@ -23,6 +23,7 @@ const TABS: readonly {
   { href: "/similarity", label: "Similarity" },
   { href: "/portfolio", label: "Portfolio", hidden: true },
   { href: "/object-detection", label: "Object Detection", hidden: true },
+  { href: "/risk-assessment", label: "Risk Assessment" },
   { href: "/drone-corridor", label: "Drone Corridor" },
   { href: "/remote-assessment", label: "Remote Inspection" },
   { href: "/memory", label: "Memory" },
