@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callBackend, BackendError } from "@/lib/server/backend";
+import { isOsmSearchCountry } from "@/lib/searchPipeline";
 
 /**
  * POST /api/eikon/search/progress  { apiKey, jobId? }
@@ -15,17 +16,22 @@ import { callBackend, BackendError } from "@/lib/server/backend";
  */
 export async function POST(req: NextRequest) {
   try {
-    const { apiKey, jobId, rapid } = (await req.json()) as {
+    const { apiKey, jobId, rapid, country } = (await req.json()) as {
       apiKey?: string;
       jobId?: string;
       rapid?: boolean;
+      country?: string;
     };
     if (!apiKey) {
       return NextResponse.json({ error: "apiKey required" }, { status: 400 });
     }
 
     const data = await callBackend<{ latest_ckpt?: string; job_complete?: boolean }>(
-      rapid ? "rapidCheckJobComplete" : "checkJobComplete",
+      isOsmSearchCountry(country)
+        ? "rapidCheckJobCompleteOsm"
+        : rapid
+          ? "rapidCheckJobComplete"
+          : "checkJobComplete",
       { json: { api_key: apiKey, ...(jobId ? { job_id: jobId } : {}) }, timeoutMs: 8_000 },
     );
 

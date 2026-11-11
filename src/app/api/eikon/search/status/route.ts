@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cellToLatLng } from "h3-js";
 import { callBackend, BackendError } from "@/lib/server/backend";
+import { isOsmSearchCountry } from "@/lib/searchPipeline";
 import type { SearchResult, DetectedObject } from "@/lib/types";
 
 /**
@@ -120,14 +121,28 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "jobId required" }, { status: 400 });
     }
     const rapid = req.nextUrl.searchParams.get("rapid") === "true";
+    // The country the job was submitted for, so a Spain job keeps polling the
+    // _osm status route after a reload.
+    const osm = isOsmSearchCountry(req.nextUrl.searchParams.get("country"));
 
-    const data = await callBackend<StatusResponse>(
-      rapid ? "rapidSearchStatus" : "searchStatus",
-      {
-        query: { job_id: jobId },
-        timeoutMs: 30_000,
-      },
-    );
+    let data: StatusResponse;
+    try {
+      data = await callBackend<StatusResponse>(
+        osm ? "rapidSearchStatusOsm" : rapid ? "rapidSearchStatus" : "searchStatus",
+        {
+          query: { job_id: jobId },
+          timeoutMs: 30_000,
+        },
+      );
+    } catch (err) {
+      // The OSM status route reports an unknown job as a 404 rather than a 200
+      // carrying an error, and the client polls until it is told to stop. Treat
+      // it as a dead job so polling ends instead of running forever.
+      if (osm && err instanceof BackendError && err.status === 404) {
+        return NextResponse.json({ status: "failed", error: err.message });
+      }
+      throw err;
+    }
 
     // The rapid endpoint answers an unrecognised job with an error rather than
     // a pending status, so surface that instead of polling forever.

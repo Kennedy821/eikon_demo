@@ -63,6 +63,14 @@ const COUNTRIES = [
     supportsAreaSearch: false,
     mapView: { longitude: 114.15, latitude: 22.35, zoom: 9.5 },
   },
+  {
+    value: "spain",
+    label: "Spain",
+    shortLabel: "Spain",
+    searchPrefix: "spain",
+    supportsAreaSearch: false,
+    mapView: { longitude: -3.7, latitude: 40.2, zoom: 5.2 },
+  },
 ] as const;
 
 type CountryValue = (typeof COUNTRIES)[number]["value"];

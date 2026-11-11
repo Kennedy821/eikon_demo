@@ -74,6 +74,31 @@ export const BACKEND = {
     method: "POST",
   },
 
+  // ---- OSM search (ngrok) — the any-country rapid pipeline, serving the
+  //      countries described from OSM data rather than the UK/Hong Kong
+  //      imagery stack. Same payloads and response shapes as the rapid trio
+  //      above; only the paths differ.
+  //
+  //      One behavioural difference: the status route answers an unrecognised
+  //      job with HTTP 404 rather than a 200 carrying an `error` field, so the
+  //      status handler has to treat that as a dead job instead of a transient
+  //      poll failure.
+  rapidSearchSubmitOsm: {
+    base: NGROK_BASE,
+    path: "/eikon_search_agent_api_any_country_rapid_search_osm_submit",
+    method: "POST",
+  },
+  rapidSearchStatusOsm: {
+    base: NGROK_BASE,
+    path: "/eikon_search_agent_api_any_country_rapid_search_osm_status",
+    method: "GET",
+  },
+  rapidCheckJobCompleteOsm: {
+    base: NGROK_BASE,
+    path: "/check_if_eikon_search_agent_api_any_country_rapid_search_osm_job_complete_web",
+    method: "POST",
+  },
+
   // ---- context (pagekite, via eikonsai.context) ----
   locationDescription: { base: NGROK_BASE, path: "/get_location_description", method: "POST" },
   locationImage: { base: NGROK_BASE, path: "/get_location_image", method: "POST" },

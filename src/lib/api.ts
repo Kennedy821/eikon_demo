@@ -72,9 +72,11 @@ export function submitSearch(input: {
   return postJson<{ jobId: string }>("/api/eikon/search/submit", input);
 }
 
-export function getSearchStatus(jobId: string, rapid = false) {
+export function getSearchStatus(jobId: string, rapid = false, country?: string) {
   const q = new URLSearchParams({ jobId });
   if (rapid) q.set("rapid", "true");
+  // Sent so the server can keep an OSM-pipeline job on its own status route.
+  if (country) q.set("country", country);
   return getJson<{ status: string; results?: SearchResult[]; error?: string }>(
     `/api/eikon/search/status?${q.toString()}`,
   );
@@ -85,11 +87,17 @@ export interface SearchProgress {
   jobComplete: boolean;
 }
 
-export function getSearchProgress(apiKey: string, jobId?: string, rapid = false) {
+export function getSearchProgress(
+  apiKey: string,
+  jobId?: string,
+  rapid = false,
+  country?: string,
+) {
   return postJson<SearchProgress>("/api/eikon/search/progress", {
     apiKey,
     ...(jobId ? { jobId } : {}),
     ...(rapid ? { rapid: true } : {}),
+    ...(country ? { country } : {}),
   });
 }
 

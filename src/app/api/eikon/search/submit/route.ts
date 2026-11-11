@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callBackend, BackendError } from "@/lib/server/backend";
+import { isOsmSearchCountry } from "@/lib/searchPipeline";
 
 /**
  * POST /api/eikon/search/submit
- *   { prompt, apiKey, effort, spatialResolution, borough? }  ->  { jobId }
+ *   { prompt, apiKey, effort, spatialResolution, borough?, country? }  ->  { jobId }
  *
  * Mirrors search_locations() submit step:
  *   POST ngrok /eikon_search_agent_api_uk_submit
  *   { prompt, api_key, effort_selection, spatial_resolution_for_search, selected_area? }
+ *
+ * Three upstream pipelines, picked in this order: an OSM country (Spain) goes
+ * to the _osm routes, otherwise `rapid` chooses between the rapid and the
+ * standard trio.
  */
-const VALID_COUNTRIES = ["uk", "hongkong"];
+const VALID_COUNTRIES = ["uk", "hongkong", "spain"];
 
 export async function POST(req: NextRequest) {
   try {
@@ -44,16 +49,20 @@ export async function POST(req: NextRequest) {
       effort_selection: effort,
       spatial_resolution_for_search: spatialResolution,
     };
-    // The rapid pipeline is country-aware and always wants to know which
-    // country the search is for.
-    if (rapid) {
-      const countryValue = (country ?? "uk").toLowerCase();
-      if (!VALID_COUNTRIES.includes(countryValue)) {
-        return NextResponse.json(
-          { error: `country must be one of: ${VALID_COUNTRIES.join(", ")}` },
-          { status: 400 },
-        );
-      }
+    const countryValue = (country ?? "uk").toLowerCase();
+    if (!VALID_COUNTRIES.includes(countryValue)) {
+      return NextResponse.json(
+        { error: `country must be one of: ${VALID_COUNTRIES.join(", ")}` },
+        { status: 400 },
+      );
+    }
+    // An OSM country goes to the _osm routes whatever `rapid` says, because no
+    // rapid _osm pipeline exists upstream. The country alone decides, so the
+    // two polling routes reach the same conclusion from the stored job.
+    const osm = isOsmSearchCountry(countryValue);
+    // Both the rapid and the OSM pipelines are country-aware and want to know
+    // which country the search is for.
+    if (rapid || osm) {
       payload.country = countryValue;
     }
     // The by-area value is country-prefixed ("UK - area"), so match the suffix
@@ -71,7 +80,7 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await callBackend<{ job_id?: string }>(
-      rapid ? "rapidSearchSubmit" : "searchSubmit",
+      osm ? "rapidSearchSubmitOsm" : rapid ? "rapidSearchSubmit" : "searchSubmit",
       {
         json: payload,
         timeoutMs: 30_000,

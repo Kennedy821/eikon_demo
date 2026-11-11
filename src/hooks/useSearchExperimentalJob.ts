@@ -96,7 +96,7 @@ export function useSearchExperimentalJob() {
 
   const status = useQuery({
     queryKey: ["search-exp-status", jobId],
-    queryFn: () => getSearchStatus(jobId as string, isRapid),
+    queryFn: () => getSearchStatus(jobId as string, isRapid, jobCountry),
     enabled: !!jobId,
     // Poll at 5s — aggressive enough to catch completion promptly but not
     // hammering the backend for a multi-minute moderate/exhaustive run.
@@ -146,7 +146,7 @@ export function useSearchExperimentalJob() {
     // same api key) each track their own progress; jobId is always set here
     // (the query is enabled only when it exists), but the param stays optional
     // so legacy/no-id callers keep the backend's most-recent-job fallback.
-    queryFn: () => getSearchProgress(apiKey as string, jobId ?? undefined, isRapid),
+    queryFn: () => getSearchProgress(apiKey as string, jobId ?? undefined, isRapid, jobCountry),
     enabled: !!jobId && !!apiKey && !isComplete,
     refetchInterval: isComplete ? false : POLL.searchProgress,
     refetchIntervalInBackground: true,

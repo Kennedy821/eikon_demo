@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { getResolution, gridDisk, cellToLatLng, isValidCell } from "h3-js";
 import { getContext, runPortfolio } from "@/lib/api";
+import { isOsmSearchCountry } from "@/lib/searchPipeline";
 import { useAuth } from "@/hooks/useAuth";
 import type { SearchResult } from "@/lib/types";
+
+// deck.gl / maplibre touch `window` — load client-only, like the results map.
+const LocationSatelliteMap = dynamic(() => import("@/components/map/LocationSatelliteMap"), {
+  ssr: false,
+  loading: () => <div className="h-48 animate-pulse rounded bg-eikon-panel" />,
+});
 
 /**
  * Location Profile carousel — ports render_location_cards. Prev/next through
@@ -140,6 +148,11 @@ function LocationCard({
           ? false
           : null;
 
+  // An OSM-pipeline country has no backend imagery behind it, so the card
+  // renders its own satellite map instead of asking for an image that does not
+  // exist. Skipping the query matters: it would otherwise retry on every card.
+  const isOsm = isOsmSearchCountry(country);
+
   // Satellite image via the existing context endpoint, at the H3-derived res.
   const image = useQuery({
     queryKey: ["loc-image", loc.locationId, loc.lat, loc.lon, country],
@@ -151,7 +164,7 @@ function LocationCard({
         apiKey: apiKey as string,
         country,
       }),
-    enabled: !!apiKey && loc.lat !== 0 && loc.lon !== 0,
+    enabled: !!apiKey && !isOsm && loc.lat !== 0 && loc.lon !== 0,
     retry: 2,
     staleTime: 5 * 60_000,
   });
@@ -206,25 +219,33 @@ function LocationCard({
           the "More like this" carousel. It previously sat in the left grid
           column, which left it stranded against the card edge whenever the
           right column had no detected objects to show. */}
-      {image.isLoading && (
-        <div className={`h-48 animate-pulse rounded bg-eikon-panel ${CARD_IMAGE_WIDTH}`} />
-      )}
-      {image.data?.image ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={`data:image/png;base64,${image.data.image}`}
-          alt="Satellite view"
-          className={`rounded border ${CARD_IMAGE_WIDTH}`}
-        />
+      {isOsm ? (
+        <div className={CARD_IMAGE_WIDTH}>
+          <LocationSatelliteMap cell={loc.locationId} lat={loc.lat} lon={loc.lon} />
+        </div>
       ) : (
-        !image.isLoading && (
-          <button
-            onClick={() => image.refetch()}
-            className="mx-auto block rounded border px-3 py-1 text-sm text-eikon-midnight"
-          >
-            Retry image fetch
-          </button>
-        )
+        <>
+          {image.isLoading && (
+            <div className={`h-48 animate-pulse rounded bg-eikon-panel ${CARD_IMAGE_WIDTH}`} />
+          )}
+          {image.data?.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`data:image/png;base64,${image.data.image}`}
+              alt="Satellite view"
+              className={`rounded border ${CARD_IMAGE_WIDTH}`}
+            />
+          ) : (
+            !image.isLoading && (
+              <button
+                onClick={() => image.refetch()}
+                className="mx-auto block rounded border px-3 py-1 text-sm text-eikon-midnight"
+              >
+                Retry image fetch
+              </button>
+            )
+          )}
+        </>
       )}
 
       <div>
@@ -428,6 +449,7 @@ function SimilarCarousel({
 function SimilarLocationImage({ cell, country }: { cell: string; country: string }) {
   const { apiKey } = useAuth();
   const [lat, lon] = cellToLatLng(cell);
+  const isOsm = isOsmSearchCountry(country);
 
   const image = useQuery({
     queryKey: ["loc-image", cell, lat, lon, country],
@@ -439,7 +461,7 @@ function SimilarLocationImage({ cell, country }: { cell: string; country: string
         apiKey: apiKey as string,
         country,
       }),
-    enabled: !!apiKey,
+    enabled: !!apiKey && !isOsm,
     retry: 2,
     staleTime: 5 * 60_000,
   });
@@ -450,6 +472,13 @@ function SimilarLocationImage({ cell, country }: { cell: string; country: string
   // gap-4, hence the half-gap subtraction.
   const WIDTH = CARD_IMAGE_WIDTH;
 
+  if (isOsm) {
+    return (
+      <div className={WIDTH}>
+        <LocationSatelliteMap cell={cell} lat={lat} lon={lon} />
+      </div>
+    );
+  }
   if (image.isLoading) {
     return <div className={`h-48 animate-pulse rounded bg-eikon-panel ${WIDTH}`} />;
   }
