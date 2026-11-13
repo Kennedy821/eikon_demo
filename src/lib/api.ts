@@ -151,6 +151,8 @@ export function submitChat(input: {
   modelCotHistory: string[];
   conversationHistory: string[];
   apiKey: string;
+  /** What the tab behind the chat is showing, already rendered to text. */
+  pageContext?: string;
 }) {
   return postJson<{ jobId: string }>("/api/eikon/chat/submit", input);
 }

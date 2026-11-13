@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useMutation } from "@tanstack/react-query";
 import { cellToLatLng, getResolution, isValidCell } from "h3-js";
 import { getContext } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { usePublishPageContext } from "@/hooks/usePageContext";
 import type { MapPoint } from "@/components/map/PointsMap";
 
 const PointsMap = dynamic(() => import("@/components/map/PointsMap"), {
@@ -104,6 +105,28 @@ export function ContextTab() {
   useEffect(() => {
     resetCtx();
   }, [country, inputMode, lat, lon, hexId, resolution, resetCtx]);
+
+  // Offer the analysed location to the Eikon AI panel. The description is the
+  // result here, so it goes up whole as a note rather than as a table cell
+  // that the row budget would clip.
+  usePublishPageContext(
+    useMemo(() => {
+      if (!ctx.data || !analysed) return null;
+      return {
+        tab: "Context",
+        params: {
+          Country: analysed.country,
+          Latitude: analysed.lat,
+          Longitude: analysed.lon,
+          "H3 cell": analysed.hex ?? ctx.data.locationId,
+          "Analysis resolution": analysed.resolution,
+        },
+        notes: ctx.data.description
+          ? [`Description of this location: ${ctx.data.description}`]
+          : [],
+      };
+    }, [ctx.data, analysed]),
+  );
 
   function onCountryChange(next: CountryValue) {
     setCountry(next);

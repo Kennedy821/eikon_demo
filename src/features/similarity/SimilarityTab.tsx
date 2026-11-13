@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useMutation } from "@tanstack/react-query";
 import { getSimilarity } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { usePublishPageContext } from "@/hooks/usePageContext";
 import type { MapPoint, RGBA } from "@/components/map/PointsMap";
 
 const PointsMap = dynamic(() => import("@/components/map/PointsMap"), {
@@ -50,6 +51,25 @@ export function SimilarityTab() {
   });
 
   const score = sim.data?.[simType];
+
+  // Offer the comparison to the Eikon AI panel. Only the requested type is
+  // computed, so only that one is sent; the others come back undefined and
+  // would otherwise read as a score of nothing.
+  usePublishPageContext(
+    useMemo(() => {
+      if (typeof score !== "number") return null;
+      return {
+        tab: "Similarity",
+        params: {
+          "Similarity type": simType,
+          Resolution: resolution,
+          "Location A": `${a.lat}, ${a.lon}`,
+          "Location B": `${b.lat}, ${b.lon}`,
+        },
+        stats: { [`${simType} similarity`]: Number(score.toFixed(4)) },
+      };
+    }, [score, simType, resolution, a, b]),
+  );
 
   return (
     <div className="space-y-6">

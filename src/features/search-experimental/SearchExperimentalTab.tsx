@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Feature, Polygon } from "geojson";
 import { useSearchExperimentalJob } from "@/hooks/useSearchExperimentalJob";
+import { usePublishPageContext } from "@/hooks/usePageContext";
 import { LocationCards } from "./LocationCards";
 import { SearchSummary } from "./SearchSummary";
 import type { SearchResult } from "@/lib/types";
@@ -147,6 +148,74 @@ export function SearchExperimentalTab() {
   const isMapSelection = resolutionMode === "map";
   // When drawing a custom AOI, an area must be drawn before searching.
   const canSubmit = prompt.trim().length > 0 && !isRunning && (!isMapSelection || !!aoi);
+
+  // Offer the finished results to the Eikon AI panel. Everything the model
+  // needs to interpret a hit is a column: the relevance and AI scores, the
+  // rationale behind them, what was detected on the ground and the written
+  // description — none of which a screenshot of the map would carry.
+  usePublishPageContext(
+    useMemo(() => {
+      if (!isComplete || results.length === 0) return null;
+      const scored = results.filter((r) => typeof r.relevance === "number");
+      const recommended = results.filter(
+        (r) => (r.aiModelEvaluation ?? 0) >= 0.5 || r.aiEvaluation === 1,
+      );
+      return {
+        tab: "Search",
+        params: {
+          Country: jobCountry,
+          "Search query": prompt,
+          "Search effort": effort,
+          "Spatial resolution": resolutionValue(resolutionMode, country),
+          Area: resolutionMode === "area" ? borough : undefined,
+          "Area of interest": isMapSelection ? "a polygon drawn on the map" : undefined,
+        },
+        stats: {
+          Locations: results.length,
+          "AI recommended": recommended.length,
+          "Relevance range": scored.length
+            ? `${Math.min(...scored.map((r) => r.relevance as number)).toFixed(3)} to ${Math.max(
+                ...scored.map((r) => r.relevance as number),
+              ).toFixed(3)}`
+            : undefined,
+        },
+        table: {
+          columns: [
+            "h3_cell",
+            "lat",
+            "lon",
+            "relevance",
+            "ai_score",
+            "objects_detected",
+            "description",
+            "ai_rationale",
+          ],
+          rows: results.map((r) => [
+            r.locationId,
+            r.lat,
+            r.lon,
+            r.relevance,
+            r.aiModelEvaluation ?? r.aiEvaluation,
+            (r.objectsDetected ?? [])
+              .map((o) => (o.coverage === undefined ? o.name : `${o.name} ${o.coverage}`))
+              .join("; "),
+            r.description,
+            r.aiModelRationale ?? r.aiRationale,
+          ]),
+        },
+      };
+    }, [
+      isComplete,
+      results,
+      jobCountry,
+      prompt,
+      effort,
+      resolutionMode,
+      country,
+      borough,
+      isMapSelection,
+    ]),
+  );
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();

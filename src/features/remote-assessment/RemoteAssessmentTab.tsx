@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { area as turfArea } from "@turf/turf";
 import type { Feature, Polygon } from "geojson";
 import { useRemoteAssessment } from "@/hooks/useRemoteAssessment";
+import { usePublishPageContext } from "@/hooks/usePageContext";
 import type { RemoteAssessmentCell } from "@/lib/types";
 import {
   parseGeoJsonFile,
@@ -236,6 +237,60 @@ export function RemoteAssessmentTab() {
   const visibleCells = useMemo(
     () => (selectedObject ? cells.filter((c) => c.objectName === selectedObject) : []),
     [cells, selectedObject],
+  );
+
+  // Offer the inspection to the Eikon AI panel. Cells where nothing was found
+  // are counted but not listed: a run covers every cell in the area and the
+  // empty ones are the bulk of them, so listing them would spend the whole
+  // budget saying nothing was there.
+  usePublishPageContext(
+    useMemo(() => {
+      if (!isComplete || cells.length === 0) return null;
+      const found = cells.filter((c) => c.coverage > 0);
+      const covered = found.reduce((sum, c) => sum + c.objectAreaKm2, 0);
+      return {
+        tab: "Remote Inspection",
+        params: {
+          Country: country,
+          "Object to look for": inspection,
+          "Execution mode": executionMode,
+          "Area of interest":
+            aoiMode === AREA_MODE ? areaName : aoiMode === UPLOAD_MODE ? "uploaded file" : "a polygon drawn on the map",
+          "Object classes returned": objectStats.map((o) => o.name).join(", "),
+        },
+        stats: {
+          "Cells assessed": cells.length,
+          "Cells with a detection": found.length,
+          "Detected area (km2)": Number(covered.toFixed(4)),
+          "Highest coverage in a cell": found.length
+            ? `${(Math.max(...found.map((c) => c.coverage)) * 100).toFixed(2)}%`
+            : undefined,
+        },
+        table: {
+          columns: ["h3_cell", "object", "coverage_pct", "object_area_km2", "mean_confidence", "area", "lat", "lon"],
+          // Only the cells that found something, worst-to-best coverage.
+          rows: [...found]
+            .sort((a, b) => b.coverage - a.coverage)
+            .map((c) => [
+              c.locationId,
+              c.objectName,
+              Number((c.coverage * 100).toFixed(3)),
+              Number(c.objectAreaKm2.toFixed(5)),
+              c.meanModelConfidence ?? undefined,
+              c.areaName ?? c.uniqueId,
+              c.lat,
+              c.lon,
+            ]),
+          totalRows: found.length,
+        },
+        notes: [
+          `${cells.length - found.length} of ${cells.length} assessed cells had no detection and are not listed.`,
+          ...objectStats.map(
+            (o) => `${o.name}: detected in ${o.detected} of ${o.assessed} assessed cells.`,
+          ),
+        ],
+      };
+    }, [isComplete, cells, country, inspection, executionMode, aoiMode, areaName, objectStats]),
   );
 
   function onSubmit(e: React.FormEvent) {

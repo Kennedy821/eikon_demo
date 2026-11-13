@@ -20,6 +20,8 @@ import {
   type TraceStep,
 } from "@/lib/chatFormat";
 import { useAuth } from "./useAuth";
+import { usePageContext } from "./usePageContext";
+import { renderPageSnapshot } from "@/lib/pageContext";
 import type { ChatMessage } from "@/lib/types";
 
 const POLL_TIMEOUT_MS = 40 * 60 * 1000; // 40 min, matches the Python max_wait.
@@ -59,6 +61,7 @@ const ChatContext = createContext<ChatContextValue | null>(null);
  */
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { apiKey } = useAuth();
+  const { readSnapshot } = usePageContext();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [steps, setSteps] = useState<TraceStep[]>([]);
   const [isThinking, setIsThinking] = useState(false);
@@ -110,15 +113,36 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const startMs = Date.now();
 
       try {
+        // Read at send time, not at render time: the results on the tab behind
+        // the panel may have arrived since this callback was created, and a
+        // question is almost always about what is on screen now.
+        const snapshot = readSnapshot();
+
+        // Reasoning traces are stored per api key, not per job, and polling
+        // used to start at index 0 every time — so each question replayed the
+        // reasoning of every question before it on the same key, and a new
+        // conversation showed the previous one's thinking under its first
+        // answer. Take the current end of the trace log as the starting point
+        // so only what this question produces is shown. Done before submitting
+        // so the job's own first traces cannot be skipped, and best-effort,
+        // because traces are decoration and must never fail a question.
+        let sinceIndex = 0;
+        try {
+          const baseline = await getChatTraces(apiKey, 0);
+          if (baseline.traces.length > 0) sinceIndex = baseline.latest_index + 1;
+        } catch {
+          /* fall back to showing everything, as before */
+        }
+
         const { jobId } = await submitChat({
           message,
           modelCotHistory: modelCotHistory.current,
           conversationHistory: conversationHistory.current,
           apiKey,
+          pageContext: snapshot ? renderPageSnapshot(snapshot) : undefined,
         });
 
         const deadline = Date.now() + POLL_TIMEOUT_MS;
-        let sinceIndex = 0;
 
         while (Date.now() < deadline) {
           if (cancelRef.current) break;
@@ -200,7 +224,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setIsThinking(false);
       }
     },
-    [apiKey, isThinking],
+    [apiKey, isThinking, readSnapshot],
   );
 
   const value = useMemo<ChatContextValue>(

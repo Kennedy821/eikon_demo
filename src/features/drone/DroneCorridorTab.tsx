@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { cellToLatLng } from "h3-js";
 import { useDroneCorridor, type DroneResult } from "@/hooks/useDroneCorridor";
+import { usePublishPageContext } from "@/hooks/usePageContext";
 import { classifyRiskScores, riskScoreToColor } from "@/lib/geo/risk";
 import { hexTooltip } from "@/lib/geo/hexTooltip";
 import { fitView } from "@/lib/geo/mapFit";
@@ -70,6 +71,63 @@ export function DroneCorridorTab() {
   const [view, setView] = useState<ResultView>("Risk Map");
   const [basemap, setBasemap] = useState<Basemap>("Dark");
   const [safetyWeight, setSafetyWeight] = useState(0.5);
+
+  // Offer the corridor to the Eikon AI panel. The candidate routes are the
+  // decision here, so they are the rows — the per-cell risk behind them is
+  // summarised rather than listed, since a corridor runs to thousands of cells
+  // and the ranking is what a question is actually about.
+  usePublishPageContext(
+    useMemo(() => {
+      if (!result) return null;
+      const { summary, routes, origin, dest, country: assessed } = result;
+      return {
+        tab: "Drone Corridor",
+        params: {
+          Country: assessed,
+          Origin: `${origin[0]}, ${origin[1]}`,
+          Destination: `${dest[0]}, ${dest[1]}`,
+          "Corridor buffer (km)": bufferKm,
+          "Acceptable landing diameter (m)": Math.round(landingM),
+          "Assessment criteria": criteria.join(", "),
+        },
+        stats: {
+          "Cells assessed": summary.totalCells,
+          "Corridor area (km2)": Number(summary.areaKm2.toFixed(3)),
+          "Mean risk score": Number(summary.meanScore.toFixed(4)),
+          "Min risk score": Number(summary.minScore.toFixed(4)),
+          "Max risk score": Number(summary.maxScore.toFixed(4)),
+          "Routes found": summary.routesFound,
+          "Recommended route length (km)": summary.recommendedLengthKm ?? undefined,
+          "Recommended risk threshold": summary.recommendedThreshold ?? undefined,
+          "Recommended percentile": summary.recommendedPercentile ?? undefined,
+        },
+        table: {
+          columns: [
+            "percentile",
+            "risk_threshold",
+            "route_length_km",
+            "cells",
+            "risk_rank",
+            "length_rank",
+            "combined_rank",
+            "recommended",
+          ],
+          rows: [...routes]
+            .sort((a, b) => a.combinedRank - b.combinedRank)
+            .map((r) => [
+              r.percentile,
+              Number(r.thresholdValue.toFixed(4)),
+              Number(r.routeLengthKm.toFixed(3)),
+              r.cells.length,
+              r.riskThresholdRank,
+              r.routeLengthRank,
+              r.combinedRank,
+              r.recommended ? "yes" : "no",
+            ]),
+        },
+      };
+    }, [result, bufferKm, landingM, criteria]),
+  );
 
   function onCountryChange(next: CountryValue) {
     setCountry(next);

@@ -5,6 +5,7 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { useState, type ReactNode } from "react";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ChatProvider } from "@/hooks/useChat";
+import { PageContextProvider } from "@/hooks/usePageContext";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -24,9 +25,13 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        {/* Above the route, so the conversation survives a tab change the
-            way an in-flight search does. */}
-        <ChatProvider>{children}</ChatProvider>
+        {/* Both above the route: the conversation survives a tab change the
+            way an in-flight search does, and the chat can read what the tab
+            behind it is showing. Page context wraps the chat because the chat
+            reads it, never the other way round. */}
+        <PageContextProvider>
+          <ChatProvider>{children}</ChatProvider>
+        </PageContextProvider>
       </AuthProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>

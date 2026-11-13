@@ -7,6 +7,7 @@ import { useEffect, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCredits, formatCredits } from "@/hooks/useCredits";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { ChatDock } from "@/features/chat/ChatDock";
 
 /** Top-level tabs — mirror active_main_tab options in eikon_demo_app_beta.py.
  *  `hidden` keeps a tab out of the nav while its page and API routes stay in
@@ -104,6 +105,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       <main className="p-4 sm:p-6">{children}</main>
+
+      {/* Decides for itself which tabs it belongs on. */}
+      <ChatDock />
     </div>
   );
 }

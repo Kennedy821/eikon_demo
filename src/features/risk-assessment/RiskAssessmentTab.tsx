@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { area as turfArea } from "@turf/turf";
 import type { Feature, Polygon } from "geojson";
 import { useRiskAssessment, type RiskResult } from "@/hooks/useRiskAssessment";
+import { usePublishPageContext } from "@/hooks/usePageContext";
 import { classifyRiskScores, riskScoreToColor } from "@/lib/geo/risk";
 import { hexTooltip } from "@/lib/geo/hexTooltip";
 import { fitView } from "@/lib/geo/mapFit";
@@ -149,6 +150,59 @@ export function RiskAssessmentTab() {
   // cells (and their owners) are what gets sent.
   const owners = useMemo(() => aoiCellOwners(features), [features]);
   const cells = useMemo(() => Array.from(owners.keys()), [owners]);
+
+  // Offer the finished assessment to the Eikon AI panel. The score per cell is
+  // the whole point of the tab and is what the map is a colouring of, so the
+  // cells go up as rows; where an upload supplied several areas, the per-area
+  // rollup goes too, since that is the comparison a user is usually making.
+  usePublishPageContext(
+    useMemo(() => {
+      if (!result || result.assessment.length === 0) return null;
+      const scores = result.assessment.map((c) => Number(c.cum_score)).filter(Number.isFinite);
+      const byLocation = rollupByLocation(result.assessment, result.owners);
+      const mean = scores.reduce((a, b) => a + b, 0) / (scores.length || 1);
+      return {
+        tab: "Risk Assessment",
+        params: {
+          Country: countryLabel(result.country),
+          "Assessment criteria": result.criteria.join(", "),
+          "Area of interest": isUploadMode ? "uploaded file" : "a polygon drawn on the map",
+          "Area (km2)": areaKm2 ? Number(areaKm2.toFixed(3)) : undefined,
+        },
+        stats: {
+          "Cells assessed": scores.length,
+          "Mean risk score": Number(mean.toFixed(4)),
+          "Min risk score": scores.length ? Number(Math.min(...scores).toFixed(4)) : undefined,
+          "Max risk score": scores.length ? Number(Math.max(...scores).toFixed(4)) : undefined,
+          "Areas in this run": byLocation.length > 1 ? byLocation.length : undefined,
+        },
+        table: {
+          columns: ["h3_index_9", "cum_score", "area"],
+          // Worst first: a question about an area is usually about its worst
+          // part, and that is also what survives if the budget trims the tail.
+          rows: [...result.assessment]
+            .sort((a, b) => Number(b.cum_score) - Number(a.cum_score))
+            .map((c) => [
+              c.h3_index_9,
+              Number(c.cum_score),
+              result.owners.get(c.h3_index_9) ?? undefined,
+            ]),
+        },
+        notes:
+          byLocation.length > 1
+            ? [
+                "Per-area rollup (area: cells, mean, max) — " +
+                  byLocation
+                    .map(
+                      (l) =>
+                        `${l.uniqueId}: ${l.cells} cells, mean ${l.meanScore.toFixed(3)}, max ${l.maxScore.toFixed(3)}`,
+                    )
+                    .join("; "),
+              ]
+            : [],
+      };
+    }, [result, isUploadMode, areaKm2]),
+  );
 
   const validCriteria = criteria.some((c) => c.trim());
   const overLimit = cells.length > CELL_LIMIT;
