@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { submitChat, getChatStatus, getChatTraces } from "@/lib/api";
 import { POLL } from "@/lib/config";
 import {
@@ -15,7 +24,40 @@ import type { ChatMessage } from "@/lib/types";
 
 const POLL_TIMEOUT_MS = 40 * 60 * 1000; // 40 min, matches the Python max_wait.
 
-export function useChat() {
+interface ChatContextValue {
+  messages: ChatMessage[];
+  steps: TraceStep[];
+  isThinking: boolean;
+  error: string | null;
+  send: (message: string) => Promise<void>;
+  cancel: () => void;
+  /** Clear the conversation and start a fresh one. */
+  reset: () => void;
+}
+
+const ChatContext = createContext<ChatContextValue | null>(null);
+
+/**
+ * Holds the Eikon AI conversation for the whole app.
+ *
+ * This is a provider rather than a plain hook because the tabs are routes: a
+ * Next.js client-side navigation unmounts the page, so state owned by ChatTab
+ * died the moment the user looked at anything else. A search survives the same
+ * navigation because nothing it needs is owned by the page — the job id is in
+ * sessionStorage and the results are in the react-query cache, both of which
+ * live in <Providers> above the route. Mounting the conversation there puts the
+ * chat on the same footing.
+ *
+ * It also fixes a quieter loss: send() polls in a plain async loop rather than
+ * through react-query, so navigating away mid-answer left the loop running
+ * with nowhere to put the result. Above the route the loop outlives the page
+ * and the reply lands whether or not the user is watching — matching the
+ * search pollers' refetchIntervalInBackground.
+ *
+ * Scope is the browser session, not the account, so the conversation is
+ * dropped on logout; see the apiKey effect below.
+ */
+export function ChatProvider({ children }: { children: ReactNode }) {
   const { apiKey } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [steps, setSteps] = useState<TraceStep[]>([]);
@@ -33,6 +75,28 @@ export function useChat() {
     cancelRef.current = true;
     wakeRef.current?.();
   }, []);
+
+  const reset = useCallback(() => {
+    cancel();
+    modelCotHistory.current = [];
+    conversationHistory.current = [];
+    setMessages([]);
+    setSteps([]);
+    setIsThinking(false);
+    setError(null);
+  }, [cancel]);
+
+  // The conversation now outlives the page, so it would also outlive a logout
+  // and be waiting for whoever signs in next on this browser. Drop it when the
+  // key changes. The first transition is null -> key on hydration, when there
+  // is nothing to drop.
+  const lastApiKey = useRef(apiKey);
+  useEffect(() => {
+    if (lastApiKey.current !== apiKey) {
+      lastApiKey.current = apiKey;
+      reset();
+    }
+  }, [apiKey, reset]);
 
   const send = useCallback(
     async (message: string) => {
@@ -139,5 +203,16 @@ export function useChat() {
     [apiKey, isThinking],
   );
 
-  return { messages, steps, isThinking, error, send, cancel };
+  const value = useMemo<ChatContextValue>(
+    () => ({ messages, steps, isThinking, error, send, cancel, reset }),
+    [messages, steps, isThinking, error, send, cancel, reset],
+  );
+
+  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+}
+
+export function useChat(): ChatContextValue {
+  const ctx = useContext(ChatContext);
+  if (!ctx) throw new Error("useChat must be used within <ChatProvider>");
+  return ctx;
 }
