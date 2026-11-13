@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useChat } from "@/hooks/useChat";
 import { synthesizeSpeech, type VoiceName } from "@/lib/api";
 import type { TraceStep } from "@/lib/chatFormat";
+import { COVERED_COUNTRIES } from "@/lib/countries";
 
 /**
  * The Eikon AI conversation — the transcript and the composer, with no page
@@ -31,6 +32,7 @@ export function Conversation({ compact = false }: { compact?: boolean }) {
   const { messages, steps, isThinking, error, send, cancel } = useChat();
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [ttsIndex, setTtsIndex] = useState<number | null>(null);
   const [ttsState, setTtsState] = useState<TtsState>("idle");
   const [voice, setVoice] = useState<VoiceName>("Heart");
@@ -71,10 +73,38 @@ export function Conversation({ compact = false }: { compact?: boolean }) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, steps]);
 
+  /**
+   * Grow the composer to fit what has been typed, up to a ceiling.
+   *
+   * A textarea does not size itself, so the height is set from scrollHeight on
+   * every change — reset to auto first, or it can only ever grow, never shrink
+   * back when text is deleted. Past the ceiling it scrolls instead, so a long
+   * paste cannot push the transcript off the screen.
+   */
+  function autoGrow() {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, compact ? 160 : 200)}px`;
+  }
+
   function submit(text: string) {
     if (!text.trim() || isThinking) return;
     send(text);
     setInput("");
+    // Drop the inline height so the box falls back to its single-row size;
+    // clearing the value alone would leave it standing at its grown height.
+    if (inputRef.current) inputRef.current.style.height = "";
+  }
+
+  function onComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter sends, Shift+Enter makes a new line — the convention for a chat
+    // box, and the behaviour the single-line input had. `isComposing` guards
+    // against sending on the Enter that commits an IME candidate, which is how
+    // Chinese is typed and so reachable from the Hong Kong side of the app.
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    submit(input);
   }
 
   return (
@@ -142,14 +172,25 @@ export function Conversation({ compact = false }: { compact?: boolean }) {
             e.preventDefault();
             submit(input);
           }}
-          className="flex gap-2"
+          // items-end so the button stays level with the last line as the box
+          // grows upward, rather than being stretched or floated mid-height.
+          className="flex items-end gap-2"
         >
-          <input
+          <textarea
+            ref={inputRef}
+            rows={1}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              autoGrow();
+            }}
+            onKeyDown={onComposerKeyDown}
             placeholder="Message EIKON…"
             disabled={isThinking}
-            className={`min-w-0 flex-1 rounded-lg border disabled:opacity-50 ${
+            // resize-none because the height is driven by the content; leaving
+            // the drag handle would let it be set to something autoGrow then
+            // overrides on the next keystroke.
+            className={`min-w-0 flex-1 resize-none rounded-lg border leading-6 disabled:opacity-50 ${
               compact ? "px-3 py-2 text-sm" : "px-4 py-3"
             }`}
           />
@@ -355,13 +396,112 @@ function Thinking({ steps }: { steps: TraceStep[] }) {
   );
 }
 
+/** How long each country is readable before the next one takes over. */
+const COUNTRY_ROTATE_MS = 3_000;
+/** How long the incoming name takes to arrive. */
+const COUNTRY_FADE_MS = 300;
+
+/**
+ * Which covered country to highlight, cycling over time.
+ *
+ * The line used to claim the UK alone, which stopped being true when Hong Kong
+ * and then Spain were added. Naming them one at a time keeps the sentence
+ * short while still saying all three.
+ *
+ * Under prefers-reduced-motion nothing cycles and all three are shown at once:
+ * the information is the point, the movement is not, so the preference costs
+ * the reader nothing here.
+ */
+function useCoveredCountry(): { index: number; cycling: boolean } {
+  const [index, setIndex] = useState(0);
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduceMotion(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    const timer = setInterval(
+      () => setIndex((i) => (i + 1) % COVERED_COUNTRIES.length),
+      COUNTRY_ROTATE_MS,
+    );
+    return () => clearInterval(timer);
+  }, [reduceMotion]);
+
+  return { index, cycling: !reduceMotion };
+}
+
+/** Teal label. eikon-accent rather than eikon-teal: white on #0D9488 is
+ *  3.75:1, short of the 4.5:1 this 14px line needs, where #0E7490 is 5.4:1. */
+const COUNTRY_PILL =
+  "rounded-md bg-eikon-accent px-2 py-0.5 font-medium text-white";
+
+/**
+ * The covered country, as a badge that swaps without disturbing the sentence.
+ *
+ * All three names are rendered into the same grid cell, so the badge is always
+ * as wide as the longest of them and nothing but the text changes. Sizing to
+ * the current name instead would re-wrap and re-centre the whole paragraph on
+ * every swap, which reads as the entire sentence refreshing rather than one
+ * word in it. The teal sits on the wrapper, not on each name, so there is one
+ * steady rectangle rather than two stacking up through the swap.
+ *
+ * Only the arriving name carries a transition. The one being replaced loses it
+ * in the same render that hides it, so it goes at once and can never be caught
+ * on screen beside its replacement. An earlier version faded the old name out
+ * on a timer set to land just before the new one appeared, which held only
+ * while the timers were punctual — in a background tab they coalesce, the two
+ * fades ran together, and the words smeared over each other. Nothing here
+ * depends on when a timer fires relative to another.
+ */
+function CountryBadge() {
+  const { index, cycling } = useCoveredCountry();
+
+  if (!cycling) {
+    return (
+      <span className="inline-flex flex-wrap justify-center gap-1 align-middle">
+        {COVERED_COUNTRIES.map((name) => (
+          <span key={name} className={COUNTRY_PILL}>
+            {name}
+          </span>
+        ))}
+      </span>
+    );
+  }
+
+  return (
+    <span className={`inline-grid justify-items-center align-middle ${COUNTRY_PILL}`}>
+      {COVERED_COUNTRIES.map((name, i) => (
+        <span
+          key={name}
+          // The inactive names stay in the layout to hold the width, so they
+          // are hidden from assistive tech rather than read out as a list.
+          aria-hidden={i !== index}
+          style={i === index ? { transitionDuration: `${COUNTRY_FADE_MS}ms` } : undefined}
+          className={`col-start-1 row-start-1 ${
+            i === index ? "opacity-100 transition-opacity" : "opacity-0"
+          }`}
+        >
+          {name}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function EmptyState({ onPick, compact = false }: { onPick: (s: string) => void; compact?: boolean }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-6 p-6 text-center">
       <div>
         <h2 className="text-xl font-semibold text-eikon-midnight">Ask EIKON</h2>
-        <p className="mt-1 text-sm text-eikon-muted">
-          Locations, imagery, comparisons and object detection across the UK.
+        <p className="mt-1 text-sm leading-7 text-eikon-muted">
+          Locations, imagery, comparisons and object detection across{" "}
+          <CountryBadge />
         </p>
       </div>
       <div
