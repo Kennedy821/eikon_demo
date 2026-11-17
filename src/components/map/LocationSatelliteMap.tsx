@@ -48,6 +48,38 @@ function boundsForCell(cell: string): [[number, number], [number, number]] | nul
 }
 
 /**
+ * How deep Esri's pyramid is read for this card, overriding the shared style's
+ * cap of 19.
+ *
+ * 19 is the level that is safe everywhere, which is what a basemap shared by
+ * every map in the app has to be. This card is only ever drawn for the OSM
+ * search countries, currently Spain alone, where Esri carries a level more
+ * than that: sampling one tile per location, z20 came back as real imagery at
+ * all of Madrid, Barcelona, Seville, Valencia, Bilbao, Zaragoza, Toledo,
+ * Getafe, the Pyrenees, La Mancha, Extremadura, the Almeria greenhouses, the
+ * Galicia coast and Tenerife. That is 4x the detail of z19 — 0.06m per pixel
+ * against 0.23m — on the one card where the imagery is the whole point,
+ * because there is no backend render behind an OSM result.
+ *
+ * Not 21. Esri has z21 over central Madrid and nowhere else in Spain that was
+ * sampled, and an absent tile is not a 404 it could fall back from: the
+ * service answers 200 with a grey "Map data not yet available" JPEG, which
+ * maplibre has no way to tell from imagery and will happily draw. Capping at
+ * the level that exists country-wide means a deep zoom overzooms real imagery
+ * instead of going blank.
+ *
+ * It stays off the shared style because it is the OSM countries that have the
+ * extra level. The same probe over the UK and Hong Kong came back grey at z20
+ * at all 18 locations sampled — London, Heathrow, Manchester, Birmingham,
+ * Leeds, Glasgow, Cardiff, Belfast, Felixstowe, Southampton, Yorkshire,
+ * Cornwall, the Highlands and four points across Hong Kong — so every map
+ * drawn from the shared style keeps 19, and this applies to OSM search results
+ * only. Worth re-running when a country joins OSM_SEARCH_COUNTRIES: the level
+ * was checked over Spain, not everywhere.
+ */
+const MAX_TILE_ZOOM = 20;
+
+/**
  * The shared SATELLITE_STYLE draws Esri's place-names overlay over the
  * imagery. That overlay is wanted on the maps you navigate with, but this one
  * stands in for a photograph of a single cell, so it carries no text. Only the
@@ -56,7 +88,7 @@ function boundsForCell(cell: string): [[number, number], [number, number]] | nul
  */
 const SATELLITE_NO_LABELS = {
   ...SATELLITE_STYLE,
-  sources: { esri: SATELLITE_STYLE.sources.esri },
+  sources: { esri: { ...SATELLITE_STYLE.sources.esri, maxzoom: MAX_TILE_ZOOM } },
   layers: SATELLITE_STYLE.layers.filter((layer) => layer.source === "esri"),
 };
 
