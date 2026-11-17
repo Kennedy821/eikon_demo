@@ -73,6 +73,38 @@ export function isHiddenTrace(trace: RawTrace): boolean {
   return HIDDEN_TRACE_TYPES.has(trace.type ?? "");
 }
 
+/** Everything about a trace that distinguishes it from another one. */
+function traceKey(trace: RawTrace): string {
+  return [trace.type ?? "", trace.summary ?? "", trace.content ?? ""].join("\u0000");
+}
+
+/**
+ * The current job's traces, given the trace log as it stood before the job
+ * was submitted.
+ *
+ * Traces are stored per api key rather than per job, so a poll returns the
+ * current job's reasoning mixed in with whatever was already there. Which it
+ * is cannot be told from an index: the backend may keep appending to one log,
+ * or may start the new job's traces over from zero, and the two are
+ * indistinguishable from here. So the old traces are identified by their
+ * content instead — the leading run that matches what was there before is
+ * dropped and the rest is this job's.
+ *
+ * Both backend behaviours come out right. An appended log matches through the
+ * whole prefix and only the new tail is returned; a restarted log differs at
+ * the first trace, nothing is dropped, and all of it is returned. The one
+ * imprecision is a restarted log whose first traces happen to be byte-identical
+ * to the previous job's, which costs those few steps from the timeline and
+ * nothing else.
+ */
+export function afterSharedPrefix(traces: RawTrace[], before: RawTrace[]): RawTrace[] {
+  let i = 0;
+  while (i < traces.length && i < before.length && traceKey(traces[i]) === traceKey(before[i])) {
+    i++;
+  }
+  return traces.slice(i);
+}
+
 export interface TraceStep {
   /** Friendly type label, e.g. "Reasoning", "Geocoding location". */
   label: string;

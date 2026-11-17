@@ -17,6 +17,8 @@ import {
   stripBase64FromText,
   traceStep,
   isHiddenTrace,
+  afterSharedPrefix,
+  type RawTrace,
   type TraceStep,
 } from "@/lib/chatFormat";
 import { useAuth } from "./useAuth";
@@ -118,21 +120,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         // question is almost always about what is on screen now.
         const snapshot = readSnapshot();
 
-        // Reasoning traces are stored per api key, not per job, and polling
-        // used to start at index 0 every time — so each question replayed the
-        // reasoning of every question before it on the same key, and a new
-        // conversation showed the previous one's thinking under its first
-        // answer. Take the current end of the trace log as the starting point
-        // so only what this question produces is shown. Done before submitting
-        // so the job's own first traces cannot be skipped, and best-effort,
-        // because traces are decoration and must never fail a question.
-        let sinceIndex = 0;
-        try {
-          const baseline = await getChatTraces(apiKey, 0);
-          if (baseline.traces.length > 0) sinceIndex = baseline.latest_index + 1;
-        } catch {
-          /* fall back to showing everything, as before */
-        }
+        // Reasoning traces are stored per api key, not per job, so a poll
+        // returns this question's reasoning mixed in with the reasoning of
+        // every question before it on the same key. Take the log as it stands
+        // now, before anything is submitted, so the two can be told apart —
+        // see afterSharedPrefix for why this is done by content and not by
+        // index. Best-effort: traces are decoration and must never fail a
+        // question.
+        const tracesBefore = await getChatTraces(apiKey, 0)
+          .then((r) => r.traces)
+          .catch(() => [] as RawTrace[]);
+
+        // Null while still picking this job's first trace out of the log: the
+        // whole log is fetched until then, and followed incrementally after.
+        let sinceIndex: number | null = null;
 
         const { jobId } = await submitChat({
           message,
@@ -156,12 +157,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           if (cancelRef.current) break;
 
           try {
-            const t = await getChatTraces(apiKey, sinceIndex);
-            if (t.traces.length > 0) {
+            const anchoring = sinceIndex === null;
+            const t = await getChatTraces(apiKey, sinceIndex ?? 0);
+            const fresh = anchoring ? afterSharedPrefix(t.traces, tracesBefore) : t.traces;
+            if (fresh.length > 0) {
+              // Whatever index this job's traces turned out to start at, the
+              // log can be followed from here on.
               sinceIndex = t.latest_index + 1;
               setSteps((prev) => {
                 const next = [...prev];
-                for (const tr of t.traces) {
+                for (const tr of fresh) {
                   if (isHiddenTrace(tr)) continue;
                   const step = traceStep(tr);
                   if (!step.text) continue;
