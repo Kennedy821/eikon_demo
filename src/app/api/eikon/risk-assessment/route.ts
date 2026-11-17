@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BackendError } from "@/lib/server/backend";
+import { backendErrorResponse } from "@/lib/server/safeError";
 import { fetchAssessment, workerAwakeCheck } from "@/lib/server/assessment";
 import { countryForAoi } from "@/lib/server/aoiCountry";
 
@@ -63,10 +64,6 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ assessment, country: resolved });
   } catch (err) {
-    const status = err instanceof BackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Risk assessment failed" },
-      { status },
-    );
+    return backendErrorResponse(err, "Risk assessment failed");
   }
 }

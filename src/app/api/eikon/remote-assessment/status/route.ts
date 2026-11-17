@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callBackend, BackendError } from "@/lib/server/backend";
+import { callBackend } from "@/lib/server/backend";
+import { backendErrorResponse } from "@/lib/server/safeError";
 import {
   jobCache,
   parseVerificationResult,
@@ -87,7 +88,8 @@ export async function POST(req: NextRequest) {
         status: "failed",
         progress: 0,
         latestCkpt: String(data?.latest_ckpt ?? ""),
-        error: `The assessment could not be started: ${cached.error.message}`,
+        // Already a complete, user-safe sentence from the submit route.
+        error: cached.error.message,
       };
       return NextResponse.json(body);
     }
@@ -106,10 +108,6 @@ export async function POST(req: NextRequest) {
     };
     return NextResponse.json(body);
   } catch (err) {
-    const status = err instanceof BackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Assessment status check failed" },
-      { status },
-    );
+    return backendErrorResponse(err, "Assessment status check failed");
   }
 }

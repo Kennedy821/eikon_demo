@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BackendError } from "@/lib/server/backend";
+import { backendErrorResponse } from "@/lib/server/safeError";
 import { fetchAssessment, workerAwakeCheck } from "@/lib/server/assessment";
 
 /**
@@ -46,10 +47,6 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ assessment });
   } catch (err) {
-    const status = err instanceof BackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Assessment failed" },
-      { status },
-    );
+    return backendErrorResponse(err, "Assessment failed");
   }
 }

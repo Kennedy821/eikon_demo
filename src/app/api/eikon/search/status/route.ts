@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cellToLatLng } from "h3-js";
 import { callBackend, BackendError } from "@/lib/server/backend";
+import { backendErrorResponse, safeUpstreamMessage } from "@/lib/server/safeError";
 import { isOsmSearchCountry } from "@/lib/searchPipeline";
 import type { SearchResult, DetectedObject } from "@/lib/types";
 
@@ -15,6 +16,10 @@ import type { SearchResult, DetectedObject } from "@/lib/types";
  * We normalise that into row records and derive lat/lon from H3 location_id
  * when coordinates are missing/zero (replicating the h3_to_geo fallback).
  */
+
+/** What a user is told when a search job cannot be read back. */
+const SEARCH_FAILED_MESSAGE =
+  "That search could not be completed. Please try running it again.";
 
 interface StatusResponse {
   status?: string;
@@ -139,7 +144,10 @@ export async function GET(req: NextRequest) {
       // carrying an error, and the client polls until it is told to stop. Treat
       // it as a dead job so polling ends instead of running forever.
       if (osm && err instanceof BackendError && err.status === 404) {
-        return NextResponse.json({ status: "failed", error: err.message });
+        return NextResponse.json({
+          status: "failed",
+          error: safeUpstreamMessage(err, SEARCH_FAILED_MESSAGE),
+        });
       }
       throw err;
     }
@@ -147,7 +155,10 @@ export async function GET(req: NextRequest) {
     // The rapid endpoint answers an unrecognised job with an error rather than
     // a pending status, so surface that instead of polling forever.
     if (data?.error) {
-      return NextResponse.json({ status: "failed", error: data.error });
+      return NextResponse.json({
+        status: "failed",
+        error: safeUpstreamMessage(data.error, SEARCH_FAILED_MESSAGE),
+      });
     }
 
     if (data?.status !== "completed") {
@@ -162,10 +173,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ status: "completed", results: normalise(rows) });
   } catch (err) {
-    const status = err instanceof BackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Search status failed" },
-      { status },
-    );
+    return backendErrorResponse(err, SEARCH_FAILED_MESSAGE);
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { backendFetch, BackendError, NGROK_BASE } from "@/lib/server/backend";
+import { backendErrorResponse } from "@/lib/server/safeError";
 
 /**
  * Memory endpoints (dynamic paths embed the api_key), from render_memory_tab:
@@ -11,11 +12,7 @@ import { backendFetch, BackendError, NGROK_BASE } from "@/lib/server/backend";
  */
 
 function errResponse(err: unknown, fallback: string) {
-  const status = err instanceof BackendError ? err.status : 500;
-  return NextResponse.json(
-    { error: err instanceof Error ? err.message : fallback },
-    { status },
-  );
+  return backendErrorResponse(err, fallback);
 }
 
 export async function GET(req: NextRequest) {

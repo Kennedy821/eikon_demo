@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callBackend, BackendError } from "@/lib/server/backend";
+import { callBackend } from "@/lib/server/backend";
+import { backendErrorResponse } from "@/lib/server/safeError";
 
 /**
  * POST /api/eikon/portfolio
@@ -107,10 +108,6 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ results });
   } catch (err) {
-    const status = err instanceof BackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Portfolio comparison failed" },
-      { status },
-    );
+    return backendErrorResponse(err, "Portfolio comparison failed");
   }
 }

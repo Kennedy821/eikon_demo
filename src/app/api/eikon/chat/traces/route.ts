@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callBackend, BackendError } from "@/lib/server/backend";
+import { callBackend } from "@/lib/server/backend";
 
 /**
  * POST /api/eikon/chat/traces  { apiKey, sinceIndex }  ->

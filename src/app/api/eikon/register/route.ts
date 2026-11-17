@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callBackend, BackendError } from "@/lib/server/backend";
+import { callBackend } from "@/lib/server/backend";
+import { backendErrorResponse } from "@/lib/server/safeError";
 
 /**
  * POST /api/eikon/register
@@ -86,8 +87,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ email });
   } catch (err) {
-    const status = err instanceof BackendError ? err.status : 500;
-    const message = err instanceof Error ? err.message : "Registration failed";
-    return NextResponse.json({ error: message }, { status });
+    return backendErrorResponse(err, "It was not possible to register your account");
   }
 }

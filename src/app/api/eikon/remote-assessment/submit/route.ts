@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { BACKEND, BackendError, callBackend, type BackendCall } from "@/lib/server/backend";
 import {
+  backendErrorResponse,
+  safeUpstreamMessage,
+  ASSESSMENT_FAILED_MESSAGE,
+} from "@/lib/server/safeError";
+import {
   jobCache,
   pruneJobCache,
   parseVerificationResult,
@@ -130,7 +135,13 @@ export async function POST(req: NextRequest) {
           const text = typeof body === "string" ? body : JSON.stringify(body ?? "");
           const gatewayError = status === 502 || status === 503 || status === 504;
           entry.error = {
-            message: `Backend returned ${status}: ${text.slice(0, 200)}`,
+            // The body is logged, not stored: this message is read back by the
+            // status route and shown to the user, and a raw backend body is
+            // not something to put in front of them.
+            message: safeUpstreamMessage(
+              `Backend returned ${status}: ${text.slice(0, 200)}`,
+              ASSESSMENT_FAILED_MESSAGE,
+            ),
             fatal: status >= 400 && !gatewayError,
           };
         }
@@ -139,7 +150,7 @@ export async function POST(req: NextRequest) {
       .catch((err: unknown) => {
         const entry = cache.get(jobId) ?? { startedAt: Date.now() };
         entry.error = {
-          message: err instanceof Error ? err.message : "Assessment request failed",
+          message: safeUpstreamMessage(err, ASSESSMENT_FAILED_MESSAGE),
           fatal: false,
         };
         cache.set(jobId, entry);
@@ -147,10 +158,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ jobId });
   } catch (err) {
-    const status = err instanceof BackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Assessment submit failed" },
-      { status },
-    );
+    return backendErrorResponse(err, "Assessment submit failed");
   }
 }
