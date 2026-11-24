@@ -9,6 +9,11 @@ import { LocationCards } from "./LocationCards";
 import { SearchSummary } from "./SearchSummary";
 import type { SearchResult } from "@/lib/types";
 import UK_AREAS from "@/content/uk_areas.json";
+import {
+  COUNTRIES as SHARED_COUNTRIES,
+  countriesByRegion,
+  type CountryValue,
+} from "@/lib/countries";
 
 // deck.gl / maplibre touch `window` — load client-only. Experimental fork of
 // the results map: renders "More like this" matches teal with match tooltips.
@@ -43,38 +48,34 @@ type ResolutionMode = (typeof RESOLUTION_MODES)[number];
  * Everything that varies by country lives here, so adding a country is one
  * entry rather than a new conditional in each control.
  *
+ * The geography — label, region and map framing — comes from the shared
+ * COUNTRY table; only what is specific to searching is set here.
  * `searchPrefix` is the prefix of the spatial_resolution_for_search value sent
- * to the backend; `shortLabel` is the user-facing one. Searching by area is
- * UK-only, so `supportsAreaSearch` gates that option.
+ * to the backend and `shortLabel` is the user-facing one, both of which match
+ * the country's own value and label for every country except the UK.
+ * Searching by area is UK-only, so `supportsAreaSearch` gates that option.
+ *
+ * Everything other than the UK and Hong Kong runs on the OSM pipeline (see
+ * searchPipeline), which takes the country's own name as the prefix, as Spain
+ * already did.
  */
-const COUNTRIES = [
-  {
-    value: "uk",
-    label: "United Kingdom",
-    shortLabel: "UK",
-    searchPrefix: "UK",
-    supportsAreaSearch: true,
-    mapView: { longitude: -2.5, latitude: 54, zoom: 4.2 },
-  },
-  {
-    value: "hongkong",
-    label: "Hong Kong",
-    shortLabel: "Hong Kong",
-    searchPrefix: "hongkong",
-    supportsAreaSearch: false,
-    mapView: { longitude: 114.15, latitude: 22.35, zoom: 9.5 },
-  },
-  {
-    value: "spain",
-    label: "Spain",
-    shortLabel: "Spain",
-    searchPrefix: "spain",
-    supportsAreaSearch: false,
-    mapView: { longitude: -3.7, latitude: 40.2, zoom: 5.2 },
-  },
-] as const;
+const SEARCH_OVERRIDES: Partial<
+  Record<CountryValue, { shortLabel?: string; searchPrefix?: string; supportsAreaSearch?: true }>
+> = {
+  uk: { shortLabel: "UK", searchPrefix: "UK", supportsAreaSearch: true },
+};
 
-type CountryValue = (typeof COUNTRIES)[number]["value"];
+const COUNTRIES = SHARED_COUNTRIES.map((c) => {
+  const override = SEARCH_OVERRIDES[c.value] ?? {};
+  return {
+    ...c,
+    shortLabel: override.shortLabel ?? c.label,
+    searchPrefix: override.searchPrefix ?? c.value,
+    supportsAreaSearch: override.supportsAreaSearch ?? false,
+  };
+});
+
+const COUNTRY_GROUPS = countriesByRegion(COUNTRIES);
 
 function countryDef(value: CountryValue) {
   return COUNTRIES.find((c) => c.value === value) ?? COUNTRIES[0];
@@ -255,10 +256,14 @@ export function SearchExperimentalTab() {
                 onChange={(e) => onCountryChange(e.target.value as CountryValue)}
                 className="w-full rounded border px-2 py-1.5"
               >
-                {COUNTRIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
+                {COUNTRY_GROUPS.map((group) => (
+                  <optgroup key={group.region} label={group.region}>
+                    {group.countries.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </label>

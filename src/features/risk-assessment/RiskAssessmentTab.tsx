@@ -4,6 +4,12 @@ import { useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { area as turfArea } from "@turf/turf";
 import type { Feature, Polygon } from "geojson";
+import {
+  COUNTRIES,
+  countriesByRegion,
+  countryByValue,
+  type CountryValue,
+} from "@/lib/countries";
 import { useRiskAssessment, type RiskResult } from "@/hooks/useRiskAssessment";
 import { usePublishPageContext } from "@/hooks/usePageContext";
 import { classifyRiskScores, riskScoreToColor } from "@/lib/geo/risk";
@@ -44,23 +50,16 @@ const DEFAULT_CRITERIA = ["major industrial areas", "residential houses", "lots 
 
 /**
  * The country only moves the drawing map to the right part of the world — the
- * assessment route resolves the country from the AOI's own geometry, so an
- * uploaded file never depends on this being set correctly.
+ * assessment route resolves the country from the AOI's own geometry and
+ * enforces no list of its own, so what is offered here changes where you start
+ * drawing and nothing else. An AOI could always be placed over any of these by
+ * panning; the dropdown just saves the panning.
+ *
+ * It follows that listing a country here is not a claim the assessment works
+ * there. The backend is the authority on which countries it holds reference
+ * data for, and it answers that when the cells are sent.
  */
-const COUNTRIES = [
-  { value: "uk", label: "United Kingdom", mapView: { longitude: -2.5, latitude: 54, zoom: 4.2 } },
-  {
-    value: "hongkong",
-    label: "Hong Kong",
-    mapView: { longitude: 114.15, latitude: 22.35, zoom: 9.5 },
-  },
-] as const;
-
-type CountryValue = (typeof COUNTRIES)[number]["value"];
-
-function countryDef(value: CountryValue) {
-  return COUNTRIES.find((c) => c.value === value) ?? COUNTRIES[0];
-}
+const COUNTRY_GROUPS = countriesByRegion(COUNTRIES);
 
 /** Each cell is assessed individually, so a big AOI is a long job. */
 const CELL_WARN = 15_000;
@@ -247,10 +246,14 @@ export function RiskAssessmentTab() {
                 onChange={(e) => setCountry(e.target.value as CountryValue)}
                 className="w-full rounded border px-2 py-1.5"
               >
-                {COUNTRIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
+                {COUNTRY_GROUPS.map((group) => (
+                  <optgroup key={group.region} label={group.region}>
+                    {group.countries.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </label>
@@ -274,7 +277,7 @@ export function RiskAssessmentTab() {
                 <PolygonDrawMap
                   key={country}
                   onChange={setAoi}
-                  initialView={countryDef(country).mapView}
+                  initialView={countryByValue(country).mapView}
                 />
               </div>
             )}

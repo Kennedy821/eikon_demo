@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callBackend } from "@/lib/server/backend";
 import { backendErrorResponse } from "@/lib/server/safeError";
+import { OSM_SEARCH_COUNTRY_LIST } from "@/lib/searchPipeline";
 
 /**
  * POST /api/eikon/portfolio
@@ -16,7 +17,17 @@ import { backendErrorResponse } from "@/lib/server/safeError";
  *   -> { portfolio_comparison_result: <column-oriented DataFrame JSON string> }
  */
 
-const VALID_COUNTRIES = ["uk", "hongkong"];
+/**
+ * Countries this route will forward. Derived from the OSM search list rather
+ * than written out, so a country cannot be searchable and then be turned away
+ * here — which is what happened while this read ["uk", "hongkong"]: every
+ * country added to search after Hong Kong returned a result you could see and
+ * a "More like this" that failed with a 400.
+ *
+ * There is one upstream endpoint and it decides what it can compare; this is
+ * only a guard against a value the app never offers.
+ */
+const VALID_COUNTRIES = ["uk", "hongkong", ...OSM_SEARCH_COUNTRY_LIST];
 
 interface Pair {
   orig: string;

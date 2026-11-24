@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callBackend } from "@/lib/server/backend";
 import { backendErrorResponse } from "@/lib/server/safeError";
-import { isOsmSearchCountry } from "@/lib/searchPipeline";
+import { isOsmSearchCountry, OSM_SEARCH_COUNTRY_LIST } from "@/lib/searchPipeline";
 
 /**
  * POST /api/eikon/search/submit
@@ -11,11 +11,11 @@ import { isOsmSearchCountry } from "@/lib/searchPipeline";
  *   POST ngrok /eikon_search_agent_api_uk_submit
  *   { prompt, api_key, effort_selection, spatial_resolution_for_search, selected_area? }
  *
- * Three upstream pipelines, picked in this order: an OSM country (Spain) goes
- * to the _osm routes, otherwise `rapid` chooses between the rapid and the
- * standard trio.
+ * Three upstream pipelines, picked in this order: an OSM country goes to the
+ * _osm routes, otherwise `rapid` chooses between the rapid and the standard
+ * trio.
  */
-const VALID_COUNTRIES = ["uk", "hongkong", "spain"];
+const VALID_COUNTRIES = ["uk", "hongkong", ...OSM_SEARCH_COUNTRY_LIST];
 
 export async function POST(req: NextRequest) {
   try {
