@@ -4,6 +4,13 @@ import { Map } from "react-map-gl/maplibre";
 import { cellToBoundary } from "h3-js";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { SATELLITE_STYLE } from "@/components/map/basemaps";
+import {
+  NO_IMAGERY,
+  registerEsriTileFilter,
+  throughTileFilter,
+} from "@/components/map/esriTiles";
+
+registerEsriTileFilter();
 
 /**
  * Satellite view of a single location, rendered from Esri World Imagery rather
@@ -52,30 +59,19 @@ function boundsForCell(cell: string): [[number, number], [number, number]] | nul
  * cap of 19.
  *
  * 19 is the level that is safe everywhere, which is what a basemap shared by
- * every map in the app has to be. This card is only ever drawn for the OSM
- * search countries, currently Spain alone, where Esri carries a level more
- * than that: sampling one tile per location, z20 came back as real imagery at
- * all of Madrid, Barcelona, Seville, Valencia, Bilbao, Zaragoza, Toledo,
- * Getafe, the Pyrenees, La Mancha, Extremadura, the Almeria greenhouses, the
- * Galicia coast and Tenerife. That is 4x the detail of z19 — 0.06m per pixel
- * against 0.23m — on the one card where the imagery is the whole point,
- * because there is no backend render behind an OSM result.
+ * every map in the app has to be: z20 is already absent over all 18 UK and
+ * Hong Kong locations sampled, so those maps keep it. This card is only drawn
+ * for the OSM search countries, where there is no backend render behind a
+ * result and the imagery is the whole point, and where Esri carries a level
+ * more than that across Spain, Austria and Denmark — 4x the detail, 0.06m per
+ * pixel against 0.23m.
  *
- * Not 21. Esri has z21 over central Madrid and nowhere else in Spain that was
- * sampled, and an absent tile is not a 404 it could fall back from: the
- * service answers 200 with a grey "Map data not yet available" JPEG, which
- * maplibre has no way to tell from imagery and will happily draw. Capping at
- * the level that exists country-wide means a deep zoom overzooms real imagery
- * instead of going blank.
- *
- * It stays off the shared style because it is the OSM countries that have the
- * extra level. The same probe over the UK and Hong Kong came back grey at z20
- * at all 18 locations sampled — London, Heathrow, Manchester, Birmingham,
- * Leeds, Glasgow, Cardiff, Belfast, Felixstowe, Southampton, Yorkshire,
- * Cornwall, the Highlands and four points across Hong Kong — so every map
- * drawn from the shared style keeps 19, and this applies to OSM search results
- * only. Worth re-running when a country joins OSM_SEARCH_COUNTRIES: the level
- * was checked over Spain, not everywhere.
+ * It is not a claim that every OSM country has z20; most do not. The tile
+ * loader drops the "no imagery" placeholder (see esriTiles), so where the
+ * level is missing the parent tile is scaled instead and nothing goes grey.
+ * That makes this a ceiling rather than a promise, and it can be raised: z21
+ * exists over central Madrid, Vienna and Tallinn, at the cost of a wasted
+ * request per tile everywhere else.
  */
 const MAX_TILE_ZOOM = 20;
 
@@ -88,7 +84,13 @@ const MAX_TILE_ZOOM = 20;
  */
 const SATELLITE_NO_LABELS = {
   ...SATELLITE_STYLE,
-  sources: { esri: { ...SATELLITE_STYLE.sources.esri, maxzoom: MAX_TILE_ZOOM } },
+  sources: {
+    esri: {
+      ...SATELLITE_STYLE.sources.esri,
+      tiles: SATELLITE_STYLE.sources.esri.tiles.map(throughTileFilter),
+      maxzoom: MAX_TILE_ZOOM,
+    },
+  },
   layers: SATELLITE_STYLE.layers.filter((layer) => layer.source === "esri"),
 };
 
@@ -126,6 +128,11 @@ export default function LocationSatelliteMap({
         scrollZoom={false}
         dragRotate={false}
         // Esri's terms require the credit, so the attribution control stays.
+        // A dropped placeholder tile is a normal outcome, not a fault worth
+        // putting in the console on every pan at the deepest zooms.
+        onError={(e) => {
+          if (e.error?.message !== NO_IMAGERY) console.error(e.error);
+        }}
         style={{ position: "absolute", inset: 0 }}
       />
     </div>
