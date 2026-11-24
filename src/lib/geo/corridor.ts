@@ -6,7 +6,17 @@
  */
 import { polygonToCells, latLngToCell } from "h3-js";
 import wellknown from "wellknown";
-import { toMetric, fromMetric, type CountryCode } from "./projection";
+import {
+  crsNearest,
+  fromCrs,
+  metricCrs,
+  metricCrsForPoint,
+  solveProjection,
+  toCrs,
+  utmCrsFor,
+  type Anchor,
+  type CountryCode,
+} from "./projection";
 import type { AssessmentCell, CorridorSummary, DroneRoute } from "./types";
 
 // geopandas GeoSeries.buffer default is resolution=16 (16 segments per 90°
@@ -26,8 +36,13 @@ export function corridorPolygon(
   bufferMetres: number,
   country: CountryCode = "uk",
 ): [number, number][] {
-  const [oE, oN] = toMetric([origin[1], origin[0]], country);
-  const [dE, dN] = toMetric([dest[1], dest[0]], country);
+  // One CRS for the whole stadium, chosen from where the corridor actually
+  // is rather than from the country selector: origin and destination can sit
+  // in different UTM zones, and mixing them would tear the ring apart.
+  const anchor: Anchor = [origin[1], origin[0]];
+  const crs = metricCrsForPoint(country, anchor);
+  const [oE, oN] = toCrs(crs, [origin[1], origin[0]]);
+  const [dE, dN] = toCrs(crs, [dest[1], dest[0]]);
 
   const dx = dE - oE;
   const dy = dN - oN;
@@ -40,23 +55,23 @@ export function corridorPolygon(
   const baseAngle = Math.atan2(uy, ux);
 
   const ring: [number, number][] = [];
-  const pushBNG = (e: number, n: number) => ring.push(fromMetric([e, n], country));
+  const push = (e: number, n: number) => ring.push(fromCrs(crs, [e, n]));
 
   // Left edge: origin -> dest, offset by +r·n
-  pushBNG(oE + r * nx, oN + r * ny);
-  pushBNG(dE + r * nx, dN + r * ny);
+  push(oE + r * nx, oN + r * ny);
+  push(dE + r * nx, dN + r * ny);
   // Cap around destination: sweep 180° clockwise through the forward direction
   for (let i = 1; i < CAP_SEGMENTS; i++) {
     const a = baseAngle + Math.PI / 2 - (Math.PI * i) / CAP_SEGMENTS;
-    pushBNG(dE + r * Math.cos(a), dN + r * Math.sin(a));
+    push(dE + r * Math.cos(a), dN + r * Math.sin(a));
   }
   // Right edge: dest -> origin, offset by -r·n
-  pushBNG(dE - r * nx, dN - r * ny);
-  pushBNG(oE - r * nx, oN - r * ny);
+  push(dE - r * nx, dN - r * ny);
+  push(oE - r * nx, oN - r * ny);
   // Cap around origin: sweep 180° clockwise through the backward direction
   for (let i = 1; i < CAP_SEGMENTS; i++) {
     const a = baseAngle - Math.PI / 2 - (Math.PI * i) / CAP_SEGMENTS;
-    pushBNG(oE + r * Math.cos(a), oN + r * Math.sin(a));
+    push(oE + r * Math.cos(a), oN + r * Math.sin(a));
   }
   ring.push(ring[0]); // close
   return ring;
@@ -104,12 +119,111 @@ function num(v: unknown): number {
  * to the routes list. Ports _parse_pathfinder_response: parse WKT, reproject to
  * WGS84, pick one recommended route by (combined_total_rank, risk_threshold).
  */
+/** Where the route is known to begin and end: the two cell centres sent. */
+export interface CorridorEndpoints {
+  /** [lon, lat] centre of the origin H3 cell. */
+  origin: Anchor;
+  /** [lon, lat] centre of the destination H3 cell. */
+  dest: Anchor;
+}
+
+/**
+ * How to turn the pathfinder's projected coordinates back into lon/lat.
+ *
+ * It is sent no country and picks a CRS from the cells it was given, so the
+ * client cannot derive it. Assuming the selected country's is what put the
+ * route and its two markers off the map whenever the coordinates were for
+ * somewhere else: the geometry decoded into the wrong hemisphere while the
+ * hexes, which carry their own position, stayed put.
+ *
+ * Two steps, in order of exactness:
+ *
+ *  1. Try the CRSs it plausibly used and keep whichever decodes the first
+ *     vertex nearest the origin cell. A named CRS is exact, and the right one
+ *     lands on the cell while every wrong one is thousands of kilometres away,
+ *     so there is no ambiguity. The selected country's is tried first and
+ *     still wins wherever it is right, leaving the UK and Hong Kong unchanged.
+ *
+ *  2. Failing that, solve for the mapping from the two endpoints. Listing
+ *     candidates is a treadmill — a corridor crossing a border can come back
+ *     in the far country's zone, in a Europe-wide grid, in a national grid for
+ *     a country the list has never heard of — and the list is wrong again each
+ *     time. The endpoints are known whatever the backend chose.
+ */
+function routeDecoder(
+  rows: Record<string, unknown>[],
+  country: CountryCode,
+  endpoints?: CorridorEndpoints,
+): (point: [number, number]) => [number, number] {
+  const fallbackCrs = endpoints
+    ? metricCrsForPoint(country, endpoints.origin)
+    : metricCrs(country);
+  const asFallback = (point: [number, number]) => fromCrs(fallbackCrs, point);
+  if (!endpoints) return asFallback;
+
+  const { origin, dest } = endpoints;
+  const line = firstLine(rows);
+  if (!line || line.length === 0) return asFallback;
+
+  // Both endpoints' zones, and the dropdown's, since a cross-border corridor
+  // may come back in either end's. ETRS89 UTM needs no entry of its own: it
+  // agrees with the WGS84 zone to about a metre, far inside the tolerance.
+  const candidates = [
+    metricCrs(country, origin),
+    utmCrsFor(origin),
+    utmCrsFor(dest),
+    "EPSG:27700",
+    "EPSG:2326",
+    // Some responses may already be in degrees; decoding those as metres is
+    // what sends a route to the Gulf of Guinea.
+    "EPSG:4326",
+  ].filter((crs, i, all) => all.indexOf(crs) === i);
+
+  const matched = crsNearest(line[0], origin, candidates);
+  if (matched) return (point) => fromCrs(matched, point);
+
+  const solved =
+    line.length > 1 ? solveProjection([line[0], line[line.length - 1]], [origin, dest]) : null;
+  if (solved) {
+    console.warn(
+      "[corridor] pathfinder geometry is in an unrecognised CRS; placing it " +
+        "from the origin and destination cells instead.",
+    );
+    return solved;
+  }
+
+  console.warn(
+    "[corridor] could not place the pathfinder geometry near the corridor " +
+      `in any known CRS; drawing it as ${fallbackCrs}.`,
+  );
+  return asFallback;
+}
+
+/** Vertices of the first route that parses, for identifying the CRS. */
+function firstLine(rows: Record<string, unknown>[]): [number, number][] | null {
+  for (const row of rows) {
+    const geom = wellknown.parse(String(row.geometry));
+    if (geom?.type === "LineString") {
+      const line = geom.coordinates as [number, number][];
+      if (line.length) return line;
+    } else if (geom?.type === "MultiLineString") {
+      const line = (geom.coordinates as [number, number][][]).flat();
+      if (line.length) return line;
+    }
+  }
+  return null;
+}
+
 export function parsePathfinderResponse(
   routesGdfJson: string,
   country: CountryCode = "uk",
+  /** The cell centres the route runs between; lets the CRS be identified. */
+  endpoints?: CorridorEndpoints,
 ): DroneRoute[] {
   const rows = toRows(JSON.parse(routesGdfJson));
   if (rows.length === 0) return [];
+
+  const decode = routeDecoder(rows, country, endpoints);
 
   // Recommended index: lowest combined_total_rank, tie-break lowest risk_threshold.
   const order = rows
@@ -125,9 +239,7 @@ export function parsePathfinderResponse(
     const geom = wellknown.parse(String(row.geometry));
     let coords: [number, number][] = [];
     if (geom && geom.type === "LineString") {
-      coords = (geom.coordinates as [number, number][]).map(
-        ([x, y]) => fromMetric([x, y], country),
-      );
+      coords = (geom.coordinates as [number, number][]).map(([x, y]) => decode([x, y]));
     } else if (geom && geom.type === "MultiLineString") {
       // A path split into segments still draws as one line; concatenating is
       // what the pydeck PathLayer showed. Without this the route parses to an
@@ -135,7 +247,7 @@ export function parsePathfinderResponse(
       // in the routes table, which reads its length from route_length.
       coords = (geom.coordinates as [number, number][][])
         .flat()
-        .map(([x, y]) => fromMetric([x, y], country));
+        .map(([x, y]) => decode([x, y]));
     } else if (geom) {
       console.warn(
         `[corridor] route ${idx} has unsupported geometry type "${geom.type}"; it will not be drawn.`,
@@ -217,15 +329,23 @@ export function rerankRoutes(routes: DroneRoute[], safetyWeight = 0.5): DroneRou
 }
 
 /**
- * Route geometry as WKT in the country's metric CRS (for CSV export).
- * Input coords are [lon, lat]. Use `metricCrs(country)` to label the column.
+ * Route geometry as WKT in the metric CRS the route sits in (for CSV export).
+ * Input coords are [lon, lat]. Use `wktCrs(coords, country)` to label the column.
  */
+/** The CRS routeToWkt writes, so the CSV header can name it correctly. */
+export function wktCrs(coords: [number, number][], country: CountryCode = "uk"): string {
+  return coords.length ? metricCrsForPoint(country, coords[0]) : metricCrs(country);
+}
+
 export function routeToWkt(
   coords: [number, number][],
   country: CountryCode = "uk",
 ): string {
+  // The whole line shares the first vertex's CRS, so a long route cannot come
+  // out split across two zones.
+  const crs = wktCrs(coords, country);
   const pts = coords.map(([lon, lat]) => {
-    const [e, n] = toMetric([lon, lat], country);
+    const [e, n] = toCrs(crs, [lon, lat]);
     return `${e} ${n}`;
   });
   return `LINESTRING (${pts.join(", ")})`;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { cellToLatLng } from "h3-js";
 import { assessCorridor, findSafestRoutes } from "@/lib/api";
 import {
   corridorPolygon,
@@ -116,7 +117,15 @@ export function useDroneCorridor() {
         });
 
         // 5–6. Parse routes + summary (client geo).
-        const routes = parsePathfinderResponse(routesGdf, country);
+        // The route runs between these two cells, so their centres are where
+        // its first and last vertices have to land — which is what lets the
+        // response's CRS be identified rather than assumed.
+        const [oLat, oLon] = cellToLatLng(originHex);
+        const [dLat, dLon] = cellToLatLng(destHex);
+        const routes = parsePathfinderResponse(routesGdf, country, {
+          origin: [oLon, oLat],
+          dest: [dLon, dLat],
+        });
         const summary = corridorSummary(assessmentRows, routes);
 
         setResult({ assessment: assessmentRows, routes, summary, corridorRing: ring, origin, dest, country });

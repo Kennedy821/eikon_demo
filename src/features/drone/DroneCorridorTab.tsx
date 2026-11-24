@@ -2,14 +2,19 @@
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { cellToLatLng } from "h3-js";
+import { cellToLatLng, latLngToCell } from "h3-js";
 import { useDroneCorridor, type DroneResult } from "@/hooks/useDroneCorridor";
 import { usePublishPageContext } from "@/hooks/usePageContext";
 import { classifyRiskScores, riskScoreToColor } from "@/lib/geo/risk";
 import { hexTooltip } from "@/lib/geo/hexTooltip";
 import { fitView } from "@/lib/geo/mapFit";
-import { routeToWkt } from "@/lib/geo/corridor";
-import { metricCrs } from "@/lib/geo/projection";
+import { routeToWkt, wktCrs } from "@/lib/geo/corridor";
+import {
+  COUNTRIES,
+  countriesByRegion,
+  countryByValue,
+  type CountryValue,
+} from "@/lib/countries";
 import type { AssessmentCell, DroneRoute } from "@/lib/geo/types";
 import type {
   Basemap,
@@ -27,29 +32,108 @@ const RiskLegend = dynamic(() => import("@/components/map/RiskLegend"), { ssr: f
 const H9_EDGE_M = 174;
 const DEFAULT_CRITERIA = ["major industrial areas", "residential houses", "lots of buildings"];
 
+const COUNTRY_GROUPS = countriesByRegion(COUNTRIES);
+
+/** Where a corridor starts when a country is chosen. Coordinates are strings
+ *  because they go straight into the lat/lon inputs. */
+interface CorridorSeed {
+  origin: { lat: string; lon: string; hex: string };
+  dest: { lat: string; lon: string; hex: string };
+}
+
 /**
- * Countries the assessment backend holds reference data for. The value is sent
- * as `country`; the defaults move the corridor into that country, since a UK
- * route assessed against Hong Kong data (or vice versa) is meaningless.
+ * Hand-set corridors for the two countries that have them. The hex IDs are
+ * not the cells the coordinates fall in — they were chosen separately — so
+ * they are kept rather than derived.
  */
-const COUNTRIES = [
-  {
-    value: "uk",
-    label: "United Kingdom",
+const HAND_SET_SEEDS: Partial<Record<CountryValue, CorridorSeed>> = {
+  uk: {
     origin: { lat: "51.47669", lon: "-0.445234", hex: "8919768cd4fffff" },
     dest: { lat: "51.332121", lon: "0.031690", hex: "89192b32e37ffff" },
   },
-  {
-    value: "hongkong",
-    label: "Hong Kong",
+  hongkong: {
     // Tai Tam, Southern district — cells confirmed present in the Hong Kong
     // reference data. Coordinates are the centres of the two hexes.
     origin: { lat: "22.241406", lon: "114.246822", hex: "8941034944fffff" },
     dest: { lat: "22.246729", lon: "114.162474", hex: "89410349d47ffff" },
   },
-] as const;
+};
 
-type CountryValue = (typeof COUNTRIES)[number]["value"];
+/**
+ * Capital of each remaining country, used as the corridor's origin.
+ *
+ * A corridor has to start somewhere inside the country it will be assessed
+ * against — a UK route scored against Spanish reference data is meaningless —
+ * and unlike a country's bounding-box centre a capital is always on its own
+ * land. Several of those centres are not: Denmark's falls in the Kattegat,
+ * Greece's in the Aegean, Norway's in Sweden.
+ */
+const CAPITALS: Partial<Record<CountryValue, [number, number]>> = {
+  spain: [40.4168, -3.7038],
+  belgium: [50.8476, 4.3572],
+  austria: [48.2082, 16.3738],
+  bulgaria: [42.6977, 23.3219],
+  croatia: [45.815, 15.9819],
+  cyprus: [35.1856, 33.3823],
+  czechia: [50.0755, 14.4378],
+  denmark: [55.6761, 12.5683],
+  estonia: [59.437, 24.7536],
+  finland: [60.1699, 24.9384],
+  france: [48.8566, 2.3522],
+  germany: [52.52, 13.405],
+  greece: [37.9838, 23.7275],
+  hungary: [47.4979, 19.0402],
+  italy: [41.9028, 12.4964],
+  latvia: [56.9496, 24.1052],
+  lithuania: [54.6872, 25.2797],
+  luxembourg: [49.6116, 6.1319],
+  malta: [35.8989, 14.5146],
+  netherlands: [52.3676, 4.9041],
+  norway: [59.9139, 10.7522],
+  poland: [52.2297, 21.0122],
+  portugal: [38.7223, -9.1393],
+  romania: [44.4268, 26.1025],
+  slovakia: [48.1486, 17.1077],
+  slovenia: [46.0569, 14.5058],
+  sweden: [59.3293, 18.0686],
+  switzerland: [46.948, 7.4474],
+};
+
+/** How far a seeded corridor runs, where the country is big enough for it. */
+const SEED_REACH_KM = 30;
+const KM_PER_DEGREE = 111.32;
+
+/**
+ * Point the seeded corridor from the capital towards the middle of the
+ * country, so it runs inland rather than straight out to sea — which is what
+ * a fixed compass bearing would do from Tallinn, Riga or Lisbon. The reach is
+ * capped at the distance to that middle, which is what keeps Malta's and
+ * Cyprus's corridors on the island instead of 30km offshore.
+ */
+function seededCorridor(value: CountryValue): CorridorSeed | null {
+  const capital = CAPITALS[value];
+  if (!capital) return null;
+  const [lat, lon] = capital;
+  const centre = countryByValue(value).mapView;
+
+  const northKm = (centre.latitude - lat) * KM_PER_DEGREE;
+  const eastKm =
+    (centre.longitude - lon) * KM_PER_DEGREE * Math.cos((lat * Math.PI) / 180);
+  const toCentreKm = Math.hypot(northKm, eastKm);
+  const fraction = toCentreKm > 0 ? Math.min(SEED_REACH_KM, toCentreKm) / toCentreKm : 0;
+
+  const destLat = lat + (centre.latitude - lat) * fraction;
+  const destLon = lon + (centre.longitude - lon) * fraction;
+  return { origin: point(lat, lon), dest: point(destLat, destLon) };
+}
+
+function point(lat: number, lon: number): CorridorSeed["origin"] {
+  return { lat: lat.toFixed(6), lon: lon.toFixed(6), hex: latLngToCell(lat, lon, 9) };
+}
+
+function corridorSeed(value: CountryValue): CorridorSeed | null {
+  return HAND_SET_SEEDS[value] ?? seededCorridor(value);
+}
 
 const RESULT_VIEWS = ["Risk Map", "Route Map", "Data Table"] as const;
 type ResultView = (typeof RESULT_VIEWS)[number];
@@ -131,15 +215,15 @@ export function DroneCorridorTab() {
 
   function onCountryChange(next: CountryValue) {
     setCountry(next);
-    const preset = COUNTRIES.find((c) => c.value === next);
-    if (!preset) return;
+    const seed = corridorSeed(next);
+    if (!seed) return;
     // Carry the defaults across so the corridor is inside the chosen country.
-    setOrigLat(preset.origin.lat);
-    setOrigLon(preset.origin.lon);
-    setDestLat(preset.dest.lat);
-    setDestLon(preset.dest.lon);
-    if (preset.origin.hex) setOrigHex(preset.origin.hex);
-    if (preset.dest.hex) setDestHex(preset.dest.hex);
+    setOrigLat(seed.origin.lat);
+    setOrigLon(seed.origin.lon);
+    setDestLat(seed.dest.lat);
+    setDestLon(seed.dest.lon);
+    setOrigHex(seed.origin.hex);
+    setDestHex(seed.dest.hex);
   }
 
   function resolveCoords(): { origin: [number, number]; dest: [number, number] } | null {
@@ -200,10 +284,14 @@ export function DroneCorridorTab() {
                 onChange={(e) => onCountryChange(e.target.value as CountryValue)}
                 className="w-full rounded border px-2 py-1.5"
               >
-                {COUNTRIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
+                {COUNTRY_GROUPS.map((group) => (
+                  <optgroup key={group.region} label={group.region}>
+                    {group.countries.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </label>
@@ -569,7 +657,7 @@ function DataTable({
       "Length Rank",
       "Combined Rank",
       "Recommended",
-      `Geometry (WKT, ${metricCrs(country)})`,
+      `Geometry (WKT, ${wktCrs(routes[0]?.coords ?? [], country)})`,
     ];
     const lines = routes.map((r) =>
       [
