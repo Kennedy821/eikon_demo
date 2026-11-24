@@ -2,9 +2,10 @@
 
 import { DeckGL } from "@deck.gl/react";
 import { ScatterplotLayer } from "@deck.gl/layers";
+import { WebMercatorViewport } from "@deck.gl/core";
 import { Map } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SearchResult } from "@/lib/types";
 
 /**
@@ -20,6 +21,29 @@ const GREEN: [number, number, number, number] = [40, 167, 69, 200];
 const RED: [number, number, number, number] = [220, 53, 69, 200];
 const NAVY: [number, number, number, number] = [30, 58, 95, 200];
 const TEAL: [number, number, number, number] = [13, 148, 136, 220];
+
+/** Breathing room around the outermost points, in pixels. */
+const FIT_PADDING = 48;
+
+/**
+ * How far in a fit may go. A search returning one location, or a handful
+ * within the same town, would otherwise fit to a span of metres and open at
+ * building zoom — which shows the result but not where in the country it is.
+ */
+const FIT_MAX_ZOOM = 12;
+
+/**
+ * Smallest span a fit is computed over, in degrees (~2km). Covers the
+ * degenerate case of every point sharing one coordinate, where the bounds have
+ * no extent to fit at all.
+ */
+const FIT_MIN_EXTENT = 0.02;
+
+/** Marker size on screen, in pixels, held roughly constant across zooms. */
+const DOT_PIXELS = 6;
+
+/** Used only before the container is measured, and when there is nothing to show. */
+const FALLBACK_VIEW = { longitude: -0.1278, latitude: 51.5074, zoom: 9 };
 
 type PointDatum = SearchResult & { _resultIndex: number };
 
@@ -48,23 +72,61 @@ export default function ResultsMap({ results, height = 480, onClickResult }: Pro
     [results],
   );
 
-  const { radius, zoom, centerLat, centerLon } = useMemo(() => {
-    if (points.length === 0) {
-      return { radius: 500, zoom: 9, centerLat: 51.5074, centerLon: -0.1278 };
-    }
+  // Fitting needs the pixel box it is fitting into. Measured in a layout
+  // effect so the first painted frame is already framed, with no jump from a
+  // placeholder view.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => setWidth(el.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  /**
+   * Frame the results, rather than guessing a zoom for their midpoint.
+   *
+   * The previous framing centred on the mean of the points and took a zoom
+   * from a three-step ladder bottoming out at 8 — roughly 1.5 degrees across
+   * this card. Results spread over a whole country span many times that, so
+   * the midpoint landed in empty countryside with every marker outside the
+   * viewport: the wider the search, the emptier the map.
+   *
+   * fitBounds fixes both ends of that. It zooms out as far as needed to hold
+   * the outermost points, and in as far as FIT_MAX_ZOOM permits when they are
+   * clustered, so a city-sized result set stops being framed as a country.
+   */
+  const viewState = useMemo(() => {
+    if (points.length === 0 || width === 0) return FALLBACK_VIEW;
     const lats = points.map((p) => p.lat);
     const lons = points.map((p) => p.lon);
-    const spread =
-      Math.max(...lats) - Math.min(...lats) + (Math.max(...lons) - Math.min(...lons));
-    const radius = spread > 0.2 ? 2000 : spread > 0.1 ? 1000 : 500;
-    const zoom = radius === 2000 ? 8 : radius === 1000 ? 9 : 10;
-    return {
-      radius,
-      zoom,
-      centerLat: lats.reduce((s, v) => s + v, 0) / lats.length,
-      centerLon: lons.reduce((s, v) => s + v, 0) / lons.length,
-    };
-  }, [points]);
+    const fitted = new WebMercatorViewport({ width, height }).fitBounds(
+      [
+        [Math.min(...lons), Math.min(...lats)],
+        [Math.max(...lons), Math.max(...lats)],
+      ],
+      { padding: FIT_PADDING, maxZoom: FIT_MAX_ZOOM, minExtent: FIT_MIN_EXTENT },
+    );
+    return { longitude: fitted.longitude, latitude: fitted.latitude, zoom: fitted.zoom };
+  }, [points, width, height]);
+
+  /**
+   * Dot radius is in metres, but the fitted zoom now spans anything from a
+   * continent to a town, so a fixed radius would be a speck at one end and a
+   * blob at the other. Converting a pixel size back to metres keeps the
+   * markers readable at whatever the fit produced; radiusMinPixels and
+   * radiusMaxPixels still bound the result.
+   */
+  const radius = useMemo(() => {
+    const metresPerPixel =
+      (156_543.03 * Math.cos((viewState.latitude * Math.PI) / 180)) / 2 ** viewState.zoom;
+    return DOT_PIXELS * metresPerPixel;
+  }, [viewState]);
 
   const layers = [
     new ScatterplotLayer<PointDatum>({
@@ -89,9 +151,11 @@ export default function ResultsMap({ results, height = 480, onClickResult }: Pro
   const hasSimilar = points.some(isSimilarMatch);
 
   return (
-    <div style={{ position: "relative", height, width: "100%" }}>
+    <div ref={containerRef} style={{ position: "relative", height, width: "100%" }}>
       <DeckGL
-        initialViewState={{ longitude: centerLon, latitude: centerLat, zoom }}
+        // deck.gl re-applies initialViewState when it changes, so a new result
+        // set re-frames the map without remounting the GL context.
+        initialViewState={viewState}
         controller
         layers={layers}
         getCursor={({ isHovering }) => (onClickResult && isHovering ? "pointer" : "grab")}
