@@ -250,7 +250,7 @@ function LocationCard({
 
       <div>
         <h3 className="text-sm font-semibold text-eikon-midnight">Location Description</h3>
-        <p className="rounded bg-eikon-panel p-3 text-sm">
+        <p className="rounded bg-eikon-panel p-3 text-sm break-words">
           {loc.description ?? "No description available."}
         </p>
       </div>
@@ -259,7 +259,7 @@ function LocationCard({
         <div>
           <h3 className="text-sm font-semibold text-eikon-midnight">AI Model Evaluation</h3>
           <p
-            className={`rounded p-3 text-sm ${
+            className={`rounded p-3 text-sm break-words ${
               isRecommended === true
                 ? "bg-green-50 text-green-800"
                 : isRecommended === false
