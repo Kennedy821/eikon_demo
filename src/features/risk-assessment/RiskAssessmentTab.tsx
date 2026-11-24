@@ -64,7 +64,7 @@ function countryDef(value: CountryValue) {
 
 /** Each cell is assessed individually, so a big AOI is a long job. */
 const CELL_WARN = 15_000;
-const CELL_LIMIT = 50_000;
+const CELL_LIMIT = 200_000;
 
 const DRAWN_AOI_ID = "Drawn area";
 
