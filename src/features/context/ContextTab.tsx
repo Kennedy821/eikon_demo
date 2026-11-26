@@ -5,6 +5,12 @@ import dynamic from "next/dynamic";
 import { useMutation } from "@tanstack/react-query";
 import { cellToLatLng, getResolution, isValidCell } from "h3-js";
 import { getContext } from "@/lib/api";
+import {
+  COUNTRIES,
+  countriesByRegion,
+  CAPITALS,
+  type CountryValue,
+} from "@/lib/countries";
 import { useAuth } from "@/hooks/useAuth";
 import { usePublishPageContext } from "@/hooks/usePageContext";
 import type { MapPoint } from "@/components/map/PointsMap";
@@ -16,30 +22,30 @@ const PointsMap = dynamic(() => import("@/components/map/PointsMap"), {
 
 const RESOLUTIONS = ["low", "medium", "high"];
 
-/**
- * Countries the v2 context endpoints hold imagery for. Switching country moves
- * the default location into it, since UK coordinates described against Hong
- * Kong data would be meaningless.
- */
-const COUNTRIES = [
-  {
-    value: "uk",
-    label: "United Kingdom",
-    lat: "51.5074",
-    lon: "-0.1278",
-    hex: "89195da4b3bffff",
-  },
-  {
-    value: "hongkong",
-    label: "Hong Kong",
-    // Mong Kok, dense urban Kowloon.
-    lat: "22.3193",
-    lon: "114.1694",
-    hex: "89411cb361bffff",
-  },
-] as const;
+const COUNTRY_GROUPS = countriesByRegion(COUNTRIES);
 
-type CountryValue = (typeof COUNTRIES)[number]["value"];
+/**
+ * Where to put the user when they pick a country, as [lat, lon]. Switching
+ * country moves the default location into it, since UK coordinates described
+ * against another country's data would be meaningless.
+ *
+ * Only these two are set here; everywhere else starts at its capital. London
+ * and Mong Kok were picked by hand for the imagery-backed countries and are
+ * better starting points than "the capital" — Hong Kong has no capital of its
+ * own, and dense urban Kowloon shows what this tab is for.
+ *
+ * Listing a country is not a claim about what comes back for it. The backend
+ * resolves what it holds for a location from the `country` in the request; the
+ * dropdown only decides where you start.
+ */
+const DEFAULT_LOCATIONS: Partial<Record<CountryValue, [number, number]>> = {
+  uk: [51.5074, -0.1278],
+  hongkong: [22.3193, 114.1694],
+};
+
+function defaultLocation(value: CountryValue): [number, number] | null {
+  return DEFAULT_LOCATIONS[value] ?? CAPITALS[value] ?? null;
+}
 // An H3 cell fixes the analysis resolution: res 7 = low, 8 = medium, 9 = high.
 const H3_RES_TO_ANALYSIS: Record<number, string> = { 7: "low", 8: "medium", 9: "high" };
 const INPUT_MODES = ["Coordinates", "H3 hex"] as const;
@@ -130,10 +136,10 @@ export function ContextTab() {
 
   function onCountryChange(next: CountryValue) {
     setCountry(next);
-    const preset = COUNTRIES.find((c) => c.value === next);
+    const preset = defaultLocation(next);
     if (!preset) return;
-    setLat(preset.lat);
-    setLon(preset.lon);
+    setLat(String(preset[0]));
+    setLon(String(preset[1]));
     setHexId("");
   }
 
@@ -169,10 +175,14 @@ export function ContextTab() {
               onChange={(e) => onCountryChange(e.target.value as CountryValue)}
               className="w-full rounded border px-2 py-1.5"
             >
-              {COUNTRIES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
+              {COUNTRY_GROUPS.map((group) => (
+                <optgroup key={group.region} label={group.region}>
+                  {group.countries.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </label>

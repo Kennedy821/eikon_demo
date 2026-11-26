@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callBackend } from "@/lib/server/backend";
 import { backendErrorResponse } from "@/lib/server/safeError";
+import { OSM_SEARCH_COUNTRY_LIST } from "@/lib/searchPipeline";
 
 /**
  * POST /api/eikon/context  { lat, lon, resolution, apiKey }
@@ -13,7 +14,13 @@ import { backendErrorResponse } from "@/lib/server/safeError";
  * { text:"placeholder", location:[lat,lon], resolution, api_key }).
  * Both are fetched in parallel; image failures are non-fatal.
  */
-const VALID_COUNTRIES = ["uk", "hongkong"];
+/**
+ * Derived from the shared list rather than written out, so a country the
+ * dropdown offers cannot be 400'd here. This is a guard against a value the
+ * app never offers, not a coverage claim: there is one pair of upstream
+ * endpoints and they decide what they hold for a location.
+ */
+const VALID_COUNTRIES = ["uk", "hongkong", ...OSM_SEARCH_COUNTRY_LIST];
 
 export async function POST(req: NextRequest) {
   try {

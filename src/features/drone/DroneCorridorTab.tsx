@@ -13,6 +13,7 @@ import {
   COUNTRIES,
   countriesByRegion,
   countryByValue,
+  CAPITALS,
   type CountryValue,
 } from "@/lib/countries";
 import type { AssessmentCell, DroneRoute } from "@/lib/geo/types";
@@ -68,36 +69,6 @@ const HAND_SET_SEEDS: Partial<Record<CountryValue, CorridorSeed>> = {
  * land. Several of those centres are not: Denmark's falls in the Kattegat,
  * Greece's in the Aegean, Norway's in Sweden.
  */
-const CAPITALS: Partial<Record<CountryValue, [number, number]>> = {
-  spain: [40.4168, -3.7038],
-  belgium: [50.8476, 4.3572],
-  austria: [48.2082, 16.3738],
-  bulgaria: [42.6977, 23.3219],
-  croatia: [45.815, 15.9819],
-  cyprus: [35.1856, 33.3823],
-  czechia: [50.0755, 14.4378],
-  denmark: [55.6761, 12.5683],
-  estonia: [59.437, 24.7536],
-  finland: [60.1699, 24.9384],
-  france: [48.8566, 2.3522],
-  germany: [52.52, 13.405],
-  greece: [37.9838, 23.7275],
-  hungary: [47.4979, 19.0402],
-  italy: [41.9028, 12.4964],
-  latvia: [56.9496, 24.1052],
-  lithuania: [54.6872, 25.2797],
-  luxembourg: [49.6116, 6.1319],
-  malta: [35.8989, 14.5146],
-  netherlands: [52.3676, 4.9041],
-  norway: [59.9139, 10.7522],
-  poland: [52.2297, 21.0122],
-  portugal: [38.7223, -9.1393],
-  romania: [44.4268, 26.1025],
-  slovakia: [48.1486, 17.1077],
-  slovenia: [46.0569, 14.5058],
-  sweden: [59.3293, 18.0686],
-  switzerland: [46.948, 7.4474],
-};
 
 /** How far a seeded corridor runs, where the country is big enough for it. */
 const SEED_REACH_KM = 30;
