@@ -279,15 +279,23 @@ export function countryByValue(value: string): Country {
 }
 
 /**
+ * Shorter forms for the rotating coverage badge, where the name sits inside a
+ * sentence and every character widens the badge. Only where the full label
+ * would be needlessly long.
+ */
+const BADGE_LABELS: Partial<Record<CountryValue, string>> = { uk: "UK" };
+
+/**
  * The countries named in copy that states the coverage, as plain names.
  *
- * Deliberately NOT derived from COUNTRIES. The sentence this feeds claims
- * locations, imagery, comparisons and object detection, which is true of the
- * imagery-backed countries only — the OSM countries are Search-only. It is
- * also rendered as a row of pills when the viewer prefers reduced motion, and
- * thirty of those would be a wall rather than a badge.
+ * Derived, so a country cannot be offered in the dropdowns and left out of the
+ * coverage line. Table order is kept rather than sorted: it puts the UK, Hong
+ * Kong and Spain first, so the three with the most behind them are the ones a
+ * reader sees before their attention moves on.
  *
  * Bare names, no articles — they are rendered as labels rather than read as
  * part of the sentence, and "the UK" inside a badge reads as a mistake.
  */
-export const COVERED_COUNTRIES = ["UK", "Hong Kong", "Spain"] as const;
+export const COVERED_COUNTRIES: readonly string[] = COUNTRIES.map(
+  (c) => BADGE_LABELS[c.value] ?? c.label,
+);

@@ -396,8 +396,15 @@ function Thinking({ steps }: { steps: TraceStep[] }) {
   );
 }
 
-/** How long each country is readable before the next one takes over. */
-const COUNTRY_ROTATE_MS = 3_000;
+/**
+ * How long each country is readable before the next one takes over.
+ *
+ * 2s rather than 3s because the list is now every country EIKON covers, and a
+ * full pass has to stay within the time a reader might plausibly spend on this
+ * screen. It is still comfortably above the ~1.2s a short word needs to be
+ * read, so no name goes by unread.
+ */
+const COUNTRY_ROTATE_MS = 2_000;
 /** How long the incoming name takes to arrive. */
 const COUNTRY_FADE_MS = 300;
 
@@ -405,12 +412,13 @@ const COUNTRY_FADE_MS = 300;
  * Which covered country to highlight, cycling over time.
  *
  * The line used to claim the UK alone, which stopped being true when Hong Kong
- * and then Spain were added. Naming them one at a time keeps the sentence
- * short while still saying all three.
+ * and then Spain were added, and then the rest. Naming them one at a time
+ * keeps the sentence the length of one country name however many there are.
  *
- * Under prefers-reduced-motion nothing cycles and all three are shown at once:
- * the information is the point, the movement is not, so the preference costs
- * the reader nothing here.
+ * Under prefers-reduced-motion nothing cycles. Showing every name at once was
+ * the answer while there were three of them; at thirty it is a wall of pills
+ * where a sentence should be, so that branch gives the count instead. The
+ * names themselves are on every country dropdown in the app.
  */
 function useCoveredCountry(): { index: number; cycling: boolean } {
   const [index, setIndex] = useState(0);
@@ -444,9 +452,9 @@ const COUNTRY_PILL =
 /**
  * The covered country, as a badge that swaps without disturbing the sentence.
  *
- * All three names are rendered into the same grid cell, so the badge is always
- * as wide as the longest of them and nothing but the text changes. Sizing to
- * the current name instead would re-wrap and re-centre the whole paragraph on
+ * Every name is rendered into the same grid cell, so the badge is always as
+ * wide as the longest of them and nothing but the text changes. Sizing to the
+ * current name instead would re-wrap and re-centre the whole paragraph on
  * every swap, which reads as the entire sentence refreshing rather than one
  * word in it. The teal sits on the wrapper, not on each name, so there is one
  * steady rectangle rather than two stacking up through the swap.
@@ -463,15 +471,7 @@ function CountryBadge() {
   const { index, cycling } = useCoveredCountry();
 
   if (!cycling) {
-    return (
-      <span className="inline-flex flex-wrap justify-center gap-1 align-middle">
-        {COVERED_COUNTRIES.map((name) => (
-          <span key={name} className={COUNTRY_PILL}>
-            {name}
-          </span>
-        ))}
-      </span>
-    );
+    return <span className={`align-middle ${COUNTRY_PILL}`}>{COVERED_COUNTRIES.length} countries</span>;
   }
 
   return (
