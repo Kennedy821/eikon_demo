@@ -16,6 +16,7 @@ import {
   CAPITALS,
   type CountryValue,
 } from "@/lib/countries";
+import type { Endpoints } from "@/components/map/EndpointPickMap";
 import type { AssessmentCell, DroneRoute } from "@/lib/geo/types";
 import type {
   Basemap,
@@ -27,6 +28,13 @@ import type {
 const DroneMap = dynamic(() => import("@/components/map/DroneMap"), {
   ssr: false,
   loading: () => <div className="h-[540px] w-full animate-pulse bg-eikon-panel" />,
+});
+
+// maplibre touches `window`, so the endpoint picker loads client-only like the
+// other maps. Height matches the component's own default.
+const EndpointPickMap = dynamic(() => import("@/components/map/EndpointPickMap"), {
+  ssr: false,
+  loading: () => <div className="h-[380px] w-full animate-pulse rounded-lg bg-eikon-panel" />,
 });
 const RiskLegend = dynamic(() => import("@/components/map/RiskLegend"), { ssr: false });
 
@@ -106,6 +114,29 @@ function corridorSeed(value: CountryValue): CorridorSeed | null {
   return HAND_SET_SEEDS[value] ?? seededCorridor(value);
 }
 
+/**
+ * How the endpoints are given. "Map selection" is the same label the Risk
+ * Assessment and Remote Inspection tabs use for choosing on a map, so the
+ * three read the same way.
+ */
+const COORD_MODE = "Coordinates";
+const HEX_MODE = "H3 Hex ID";
+const MAP_MODE = "Map selection";
+const INPUT_MODES = [COORD_MODE, HEX_MODE, MAP_MODE] as const;
+type InputMode = (typeof INPUT_MODES)[number];
+
+/** Great-circle distance between two [lat, lon] points, in km. */
+function separationKm([aLat, aLon]: [number, number], [bLat, bLon]: [number, number]): number {
+  const R = 6371;
+  const rad = Math.PI / 180;
+  const dLat = (bLat - aLat) * rad;
+  const dLon = (bLon - aLon) * rad;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
 const RESULT_VIEWS = ["Risk Map", "Route Map", "Data Table"] as const;
 type ResultView = (typeof RESULT_VIEWS)[number];
 
@@ -113,7 +144,10 @@ export function DroneCorridorTab() {
   const { run, rerank, reset, isRunning, phaseLabel, warning, error, result } = useDroneCorridor();
 
   const [country, setCountry] = useState<CountryValue>("uk");
-  const [method, setMethod] = useState<"Coordinates" | "H3 Hex ID">("Coordinates");
+  const [method, setMethod] = useState<InputMode>(COORD_MODE);
+  // Endpoints picked on the map. Held separately from the typed coordinates so
+  // switching input mode does not overwrite whichever the user came from.
+  const [picked, setPicked] = useState<Endpoints>({ origin: null, dest: null });
   const [origLat, setOrigLat] = useState("51.47669");
   const [origLon, setOrigLon] = useState("-0.445234");
   const [destLat, setDestLat] = useState("51.332121");
@@ -195,10 +229,17 @@ export function DroneCorridorTab() {
     setDestLon(seed.dest.lon);
     setOrigHex(seed.origin.hex);
     setDestHex(seed.dest.hex);
+    // Points picked in the country being left would put the corridor back
+    // where it was, under a dropdown that now says somewhere else.
+    setPicked({ origin: null, dest: null });
   }
 
   function resolveCoords(): { origin: [number, number]; dest: [number, number] } | null {
-    if (method === "Coordinates") {
+    if (method === MAP_MODE) {
+      if (!picked.origin || !picked.dest) return null;
+      return { origin: picked.origin, dest: picked.dest };
+    }
+    if (method === COORD_MODE) {
       const o: [number, number] = [parseFloat(origLat), parseFloat(origLon)];
       const d: [number, number] = [parseFloat(destLat), parseFloat(destLon)];
       if (o.some(Number.isNaN) || d.some(Number.isNaN)) return null;
@@ -234,6 +275,14 @@ export function DroneCorridorTab() {
   }
 
   const validCriteria = criteria.some((c) => c.trim());
+  // Both endpoints are needed before there is a corridor to assess; in the
+  // typed modes the fields carry a seeded pair, so only the map starts empty.
+  const hasEndpoints = method !== MAP_MODE || (!!picked.origin && !!picked.dest);
+  const pickedKm = useMemo(
+    () =>
+      picked.origin && picked.dest ? separationKm(picked.origin, picked.dest) : null,
+    [picked],
+  );
 
   return (
     <div className="space-y-4">
@@ -270,26 +319,53 @@ export function DroneCorridorTab() {
 
           <div className="space-y-3 rounded-lg border p-4">
             <h2 className="text-sm font-semibold text-eikon-midnight">Origin &amp; Destination</h2>
-            <div className="flex gap-4 text-sm">
-              {(["Coordinates", "H3 Hex ID"] as const).map((m) => (
-                <label key={m} className="flex items-center gap-1">
-                  <input type="radio" checked={method === m} onChange={() => setMethod(m)} />
-                  {m}
-                </label>
-              ))}
-            </div>
+            <label className="block text-sm">
+              <span className="mb-1 block text-eikon-muted">Source</span>
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value as InputMode)}
+                className="w-full rounded border px-2 py-1.5"
+              >
+                {INPUT_MODES.map((m) => (
+                  <option key={m}>{m}</option>
+                ))}
+              </select>
+            </label>
 
-            {method === "Coordinates" ? (
+            {method === COORD_MODE && (
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Origin Lat" value={origLat} onChange={setOrigLat} />
                 <Field label="Origin Lon" value={origLon} onChange={setOrigLon} />
                 <Field label="Dest Lat" value={destLat} onChange={setDestLat} />
                 <Field label="Dest Lon" value={destLon} onChange={setDestLon} />
               </div>
-            ) : (
+            )}
+            {method === HEX_MODE && (
               <div className="space-y-2">
                 <Field label="Origin H3 Hex ID" value={origHex} onChange={setOrigHex} />
                 <Field label="Destination H3 Hex ID" value={destHex} onChange={setDestHex} />
+              </div>
+            )}
+            {method === MAP_MODE && (
+              <div className="space-y-1.5">
+                <EndpointPickMap
+                  // Remount on a country change so the map opens over the new
+                  // one, the same way the AOI maps are keyed.
+                  key={country}
+                  value={picked}
+                  onChange={setPicked}
+                  initialView={countryByValue(country).mapView}
+                />
+                <p className="text-xs text-eikon-muted">
+                  {picked.origin
+                    ? `Origin ${picked.origin[0].toFixed(5)}, ${picked.origin[1].toFixed(5)}`
+                    : "Origin not set"}
+                  {" · "}
+                  {picked.dest
+                    ? `Destination ${picked.dest[0].toFixed(5)}, ${picked.dest[1].toFixed(5)}`
+                    : "Destination not set"}
+                  {pickedKm !== null ? ` · ${pickedKm.toFixed(1)} km apart` : ""}
+                </p>
               </div>
             )}
           </div>
@@ -332,7 +408,7 @@ export function DroneCorridorTab() {
 
           <button
             onClick={onAssess}
-            disabled={isRunning || !validCriteria}
+            disabled={isRunning || !validCriteria || !hasEndpoints}
             className="w-full rounded bg-eikon-accent px-4 py-2 text-white disabled:opacity-50"
           >
             {isRunning ? "Assessing…" : "Assess Corridor"}
