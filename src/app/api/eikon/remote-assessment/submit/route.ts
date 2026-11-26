@@ -29,15 +29,12 @@ import { countryForAoi } from "@/lib/server/aoiCountry";
  * inspection_list is a single object class (e.g. "solar_panels") or "all".
  *
  * A drawn or uploaded AOI can sit anywhere, so it goes to the _any_country
- * pair with the `country` resolved from its own geometry. A named area stays
- * on the original pair: the country-aware routes reject `area_list`, since an
- * aoi_type of "standard" means the whole country to them. Execution mode picks
- * between fast and standard within whichever pair is used.
+ * pair with the `country` resolved from its own geometry and forwarded as it
+ * comes back. A named area stays on the original pair: the country-aware
+ * routes reject `area_list`, since an aoi_type of "standard" means the whole
+ * country to them. Execution mode picks between fast and standard within
+ * whichever pair is used.
  */
-
-const UK = "uk";
-/** The backend accepts these for `country`; anything else it rejects. */
-const SUPPORTED_COUNTRIES = new Set([UK, "hongkong"]);
 
 export async function POST(req: NextRequest) {
   try {
@@ -85,25 +82,21 @@ export async function POST(req: NextRequest) {
       ? BACKEND.remoteVerificationStandard
       : BACKEND.remoteVerificationFast;
 
-    // Only a custom AOI can fall outside the UK — the named-area list is UK
-    // areas, and the country-aware routes do not accept it.
+    // Only a custom AOI needs the country resolving — the named-area list is
+    // UK areas, and the country-aware routes do not accept `area_list`.
+    //
+    // Whatever /get_location_country answers is passed straight through. This
+    // route holds no list of its own: the backend is the authority on which
+    // countries it has reference data for, and it answers that when the AOI
+    // is sent. It previously rejected anything but the UK and Hong Kong here,
+    // which meant a country the backend had since added was refused before it
+    // ever saw the request.
     if (geodataframe) {
       const country = await countryForAoi(geodataframe, apiKey);
 
       if (!country) {
         return NextResponse.json(
-          {
-            error:
-              "Couldn't tell which country that area is in. Draw it over land in the UK or Hong Kong.",
-          },
-          { status: 422 },
-        );
-      }
-      if (!SUPPORTED_COUNTRIES.has(country)) {
-        return NextResponse.json(
-          {
-            error: `Remote inspection doesn't cover ${country} yet. Draw an area over the UK or Hong Kong.`,
-          },
+          { error: "Couldn't tell which country that area is in. Draw it over land." },
           { status: 422 },
         );
       }

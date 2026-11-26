@@ -19,6 +19,12 @@ import {
   type AoiFeature,
 } from "@/lib/geojsonAoi";
 import UK_AREAS from "@/content/uk_areas.json";
+import {
+  COUNTRIES as SHARED_COUNTRIES,
+  countriesByRegion,
+  countryByValue,
+  type CountryValue,
+} from "@/lib/countries";
 import { ALL_OBJECTS, OBJECT_OPTIONS } from "@/lib/remoteInspection";
 
 // deck.gl / maplibre touch `window` — client-only.
@@ -38,34 +44,24 @@ const AOI_MODES = [AREA_MODE, MAP_MODE, UPLOAD_MODE];
 
 /**
  * The country only moves the drawing map to the right part of the world — the
- * submit route resolves the country from the AOI itself. The named-area list is
- * UK areas, so that mode is offered for the UK alone.
+ * submit route resolves the country from the AOI's own geometry and holds no
+ * list of its own, so what is offered here changes where you start drawing and
+ * nothing else. An AOI could always be placed over any of these by panning;
+ * the dropdown just saves the panning.
+ *
+ * It follows that listing a country here is not a claim the inspection works
+ * there. The backend is the authority on which countries it holds reference
+ * data for, and it answers that when the AOI is sent.
+ *
+ * The one country-specific behaviour is the named-area mode: `UK_AREAS` is a
+ * list of UK areas, so that mode is offered for the UK alone.
  */
-const COUNTRIES = [
-  {
-    value: "uk",
-    label: "United Kingdom",
-    supportsAreaMode: true,
-    mapView: { longitude: -2.5, latitude: 54, zoom: 4.2 },
-  },
-  {
-    value: "hongkong",
-    label: "Hong Kong",
-    supportsAreaMode: false,
-    mapView: { longitude: 114.15, latitude: 22.35, zoom: 9.5 },
-  },
-] as const;
+const AREA_MODE_COUNTRY: CountryValue = "uk";
 
-type CountryValue = (typeof COUNTRIES)[number]["value"];
-
-function countryDef(value: CountryValue) {
-  return COUNTRIES.find((c) => c.value === value) ?? COUNTRIES[0];
-}
+const COUNTRY_GROUPS = countriesByRegion(SHARED_COUNTRIES);
 
 function aoiModesFor(country: CountryValue): string[] {
-  return countryDef(country).supportsAreaMode
-    ? AOI_MODES
-    : AOI_MODES.filter((m) => m !== AREA_MODE);
+  return country === AREA_MODE_COUNTRY ? AOI_MODES : AOI_MODES.filter((m) => m !== AREA_MODE);
 }
 // Object classes live in src/lib/remoteInspection.ts so the Admin Tools cost
 // calculator and this tab can never drift apart.
@@ -369,10 +365,14 @@ export function RemoteAssessmentTab() {
                 onChange={(e) => onCountryChange(e.target.value as CountryValue)}
                 className="w-full rounded border px-2 py-1.5"
               >
-                {COUNTRIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
+                {COUNTRY_GROUPS.map((group) => (
+                  <optgroup key={group.region} label={group.region}>
+                    {group.countries.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </label>
@@ -411,7 +411,7 @@ export function RemoteAssessmentTab() {
                 <PolygonDrawMap
                   key={country}
                   onChange={setAoi}
-                  initialView={countryDef(country).mapView}
+                  initialView={countryByValue(country).mapView}
                 />
                 {aoi && (
                   <p className="text-xs text-green-700">{aoiKm2.toFixed(1)} km²</p>
