@@ -25,8 +25,26 @@ export interface RemoteAssessmentRequest {
 
 const JOB_KEY = "eikon_active_remote_assessment_job";
 
-/** Consecutive status-poll failures tolerated before the run is called dead. */
-const POLL_FAILURES_BEFORE_ERROR = 3;
+/**
+ * Backoff for a status endpoint that is not answering.
+ *
+ * Polling is never abandoned. A dropped connection, a proxy hiccup or a
+ * backend too busy to answer within the route's timeout says nothing about
+ * the job, which runs server-side and keeps going; the run used to be declared
+ * dead after three consecutive failures, which a slow patch of a long
+ * assessment reaches on its own, and because the interval was then switched
+ * off nothing could ever revive it — the only way out was Reset, which drops
+ * the job id and strands a job that was still running.
+ *
+ * So failures only slow the asking down. The backend remains the sole
+ * authority on failure: the status route reports `failed` for a rejected
+ * request, or for one that never produced a checkpoint inside its grace
+ * period, and those still end the run.
+ */
+const POLL_BACKOFF_CAP_MS = 30_000;
+
+/** Consecutive failures before the panel mentions the connection. */
+const POLL_FAILURES_BEFORE_NOTE = 2;
 
 interface StoredJob {
   jobId: string;
@@ -124,10 +142,12 @@ export function useRemoteAssessment() {
     refetchInterval: (query) => {
       const s = query.state.data?.status;
       if (s === "completed" || s === "failed") return false;
-      // Give up once the endpoint has failed repeatedly, rather than polling a
-      // dead server indefinitely.
-      if (pollFailures >= POLL_FAILURES_BEFORE_ERROR) return false;
-      return POLL.remoteAssessmentStatus;
+      // Ease off while the endpoint is unreachable, but keep asking: the job
+      // is server-side and the next answer may well be the finished result.
+      return Math.min(
+        POLL.remoteAssessmentStatus * 2 ** Math.max(0, pollFailures - 1),
+        POLL_BACKOFF_CAP_MS,
+      );
     },
     // TanStack pauses interval refetches while the tab is in the background
     // by default. A multi-minute assessment is exactly when users switch away,
@@ -141,11 +161,6 @@ export function useRemoteAssessment() {
   const isComplete = status.data?.status === "completed";
   const isFailed = status.data?.status === "failed";
 
-  // A status endpoint that keeps failing must not leave the user on a progress
-  // bar forever. One or two failures are transient during a long run; several
-  // consecutive ones mean the answer is not coming back.
-  const pollFailed = !!jobId && pollFailures >= POLL_FAILURES_BEFORE_ERROR;
-
   // errorUpdatedAt / dataUpdatedAt change once per failed / successful fetch.
   const { isError: pollIsError, errorUpdatedAt, isSuccess: pollIsSuccess, dataUpdatedAt } = status;
   useEffect(() => {
@@ -155,8 +170,7 @@ export function useRemoteAssessment() {
     if (pollIsSuccess) setPollFailures(0);
   }, [pollIsSuccess, dataUpdatedAt]);
 
-  const isRunning =
-    submit.isPending || (!!jobId && !isComplete && !isFailed && !pollFailed);
+  const isRunning = submit.isPending || (!!jobId && !isComplete && !isFailed);
 
   // Latest structured progress (locations done / total / ETA); kept across
   // transient poll failures so the panel never blanks mid-run.
@@ -171,11 +185,7 @@ export function useRemoteAssessment() {
   const cells: RemoteAssessmentCell[] = isComplete ? (status.data?.cells ?? []) : [];
 
   const error =
-    submit.error ??
-    (isFailed ? new Error(status.data?.error ?? "Assessment failed") : null) ??
-    (pollFailed
-      ? (status.error ?? new Error("Lost contact with the assessment server."))
-      : null);
+    submit.error ?? (isFailed ? new Error(status.data?.error ?? "Assessment failed") : null);
 
   function reset() {
     setPollFailures(0);
@@ -194,7 +204,11 @@ export function useRemoteAssessment() {
     isComplete,
     progress,
     detail,
-    note: isRunning ? (status.data?.note ?? null) : null,
+    note: isRunning
+      ? pollFailures >= POLL_FAILURES_BEFORE_NOTE
+        ? "Not getting an answer from the server. Still checking — the assessment is most likely still running."
+        : (status.data?.note ?? null)
+      : null,
     cells,
     error,
   };

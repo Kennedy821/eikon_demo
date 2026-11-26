@@ -36,9 +36,12 @@ export const POLL = {
   searchProgress: 10_000,
   chatTraces: 1500,
   corridorAssessment: 3000,
-  // 8s: the SDK polls every 10s; the backend can be slow to answer while a
-  // job is mid-flight, so don't stack requests.
-  remoteAssessmentStatus: 8000,
+  // 3s. Requests cannot stack — TanStack restarts the interval only once a
+  // fetch settles, so the real cadence is this plus however long the backend
+  // takes to answer. At 8s against a 60s route timeout the progress bar ran a
+  // minute behind the backend's own count; the short interval and the route's
+  // tighter timeout are the two halves of closing that gap.
+  remoteAssessmentStatus: 3000,
 } as const;
 
 /** Cache staleness windows (ms) for TanStack Query. */

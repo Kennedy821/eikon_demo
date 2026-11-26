@@ -58,9 +58,15 @@ export async function POST(req: NextRequest) {
       eikon_remote_location_verification_result?: unknown;
     }>("remoteVerificationStatus", {
       json: { api_key: apiKey, job_id: jobId },
-      // The SDK gives each poll 60s; the backend can be slow to answer while
-      // it is busy processing tiles.
-      timeoutMs: 60_000,
+      // This poll exists to move the progress bar, so it is budgeted like a
+      // progress call rather than a result fetch: a tick the backend is too
+      // busy to answer is abandoned and asked again, instead of holding the
+      // bar still for a minute. The SDK gives each poll 60s, but it has no
+      // second channel — here the blocking submit POST writes the result into
+      // the job cache, which is read above before this call is made at all,
+      // so a poll cut short can delay the progress number and never the
+      // result.
+      timeoutMs: 20_000,
     });
 
     if (data?.job_complete) {
