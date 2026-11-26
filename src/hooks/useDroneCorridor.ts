@@ -145,11 +145,21 @@ export function useDroneCorridor() {
     setResult((prev) => (prev ? { ...prev, routes: rerankRoutes(prev.routes, safetyWeight) } : prev));
   }, []);
 
+  /**
+   * Clear the run: the lock, the phase, the messages and the result.
+   *
+   * The result is cleared too, so this returns the tab to its input state
+   * rather than releasing the lock and leaving the previous corridor on
+   * screen, which read as though the reset had not worked. The endpoints and
+   * criteria are left alone — they are the user's work, and the usual reason
+   * to reset is to adjust them and go again.
+   */
   const reset = useCallback(() => {
     inFlight.current = false;
     setPhase("idle");
     setError(null);
     setWarning(null);
+    setResult(null);
   }, []);
 
   return {

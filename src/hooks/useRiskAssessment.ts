@@ -87,10 +87,20 @@ export function useRiskAssessment() {
     [apiKey],
   );
 
+  /**
+   * Clear the run: the lock, the error and the result.
+   *
+   * The result is cleared too, so this returns the tab to its input state
+   * rather than releasing the lock and leaving the previous assessment on
+   * screen, which read as though the reset had not worked. The inputs are
+   * left alone — they are the user's work, and the usual reason to reset is
+   * to adjust them and go again.
+   */
   const reset = useCallback(() => {
     inFlight.current = false;
     setIsRunning(false);
     setError(null);
+    setResult(null);
   }, []);
 
   return { run, reset, isRunning, error, result };

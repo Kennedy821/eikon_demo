@@ -418,6 +418,15 @@ export function DroneCorridorTab() {
               Reset assessment lock
             </button>
           )}
+          {!isRunning && (result || error) && (
+            <button
+              type="button"
+              onClick={reset}
+              className="w-full rounded border px-4 py-2 text-sm text-eikon-midnight"
+            >
+              Reset
+            </button>
+          )}
           {!validCriteria && (
             <p className="text-xs text-amber-600">Please provide at least one assessment criterion.</p>
           )}
