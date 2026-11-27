@@ -19,6 +19,8 @@ import {
   type AoiFeature,
 } from "@/lib/geojsonAoi";
 import UK_AREAS from "@/content/uk_areas.json";
+import { Envelope } from "@/components/layout/Envelope";
+import { useCollapseOnResult } from "@/hooks/useCollapseOnResult";
 import {
   COUNTRIES as SHARED_COUNTRIES,
   countriesByRegion,
@@ -127,6 +129,9 @@ export function RemoteAssessmentTab() {
     cells,
     error,
   } = useRemoteAssessment();
+
+  // The drawing map folds away once the heat map has something on it.
+  const [mapOpen, setMapOpen] = useCollapseOnResult(isComplete);
 
   function onCountryChange(next: CountryValue) {
     setCountry(next);
@@ -406,8 +411,7 @@ export function RemoteAssessmentTab() {
             )}
 
             {isMapMode && (
-              <div className="space-y-1.5">
-                <span className="block text-sm text-eikon-muted">Area</span>
+              <Envelope title="Area" open={mapOpen} onOpenChange={setMapOpen}>
                 <PolygonDrawMap
                   key={country}
                   onChange={setAoi}
@@ -421,7 +425,7 @@ export function RemoteAssessmentTab() {
                     Fast mode will only assess part of an area this size.
                   </p>
                 )}
-              </div>
+              </Envelope>
             )}
 
             {isUploadMode && (

@@ -9,6 +9,8 @@ import { LocationCards } from "./LocationCards";
 import { SearchSummary } from "./SearchSummary";
 import type { SearchResult } from "@/lib/types";
 import UK_AREAS from "@/content/uk_areas.json";
+import { Envelope } from "@/components/layout/Envelope";
+import { useCollapseOnResult } from "@/hooks/useCollapseOnResult";
 import {
   COUNTRIES as SHARED_COUNTRIES,
   countriesByRegion,
@@ -145,6 +147,9 @@ export function SearchExperimentalTab() {
     stage,
     error,
   } = useSearchExperimentalJob();
+
+  // The drawing map folds away once there are results to read.
+  const [mapOpen, setMapOpen] = useCollapseOnResult(results.length > 0);
 
   const isMapSelection = resolutionMode === "map";
   // When drawing a custom AOI, an area must be drawn before searching.
@@ -299,10 +304,11 @@ export function SearchExperimentalTab() {
             )}
 
             {isMapSelection && (
-              <div className="space-y-1.5">
-                <span className="block text-sm text-eikon-muted">
-                  Draw area of interest
-                </span>
+              <Envelope
+                title="Draw area of interest"
+                open={mapOpen}
+                onOpenChange={setMapOpen}
+              >
                 <PolygonDrawMap
                   key={country}
                   onChange={setAoi}
@@ -313,7 +319,7 @@ export function SearchExperimentalTab() {
                     ? "✓ Area captured — this polygon will scope the search."
                     : "Navigate the map, pick a tool (Polygon, Rectangle, or Circle), and draw an area to search within."}
                 </p>
-              </div>
+              </Envelope>
             )}
 
             <label className="block text-sm">

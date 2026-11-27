@@ -30,6 +30,8 @@ import {
   type AoiFeature,
 } from "@/lib/geojsonAoi";
 import type { Basemap, HexDatum } from "@/components/map/DroneMap";
+import { Envelope } from "@/components/layout/Envelope";
+import { useCollapseOnResult } from "@/hooks/useCollapseOnResult";
 
 // deck.gl / maplibre touch `window` — client-only.
 const DroneMap = dynamic(() => import("@/components/map/DroneMap"), {
@@ -85,6 +87,8 @@ export function RiskAssessmentTab() {
   const [criteria, setCriteria] = useState<string[]>(DEFAULT_CRITERIA);
   const [view, setView] = useState<ResultView>("Risk Map");
   const [basemap, setBasemap] = useState<Basemap>("Dark");
+  // The drawing map folds away once the result map has something on it.
+  const [mapOpen, setMapOpen] = useCollapseOnResult(!!result);
 
   const isMapMode = aoiMode === MAP_MODE;
   const isUploadMode = aoiMode === UPLOAD_MODE;
@@ -272,14 +276,13 @@ export function RiskAssessmentTab() {
             </label>
 
             {isMapMode && (
-              <div className="space-y-1.5">
-                <span className="block text-sm text-eikon-muted">Area</span>
+              <Envelope title="Area" open={mapOpen} onOpenChange={setMapOpen}>
                 <PolygonDrawMap
                   key={country}
                   onChange={setAoi}
                   initialView={countryByValue(country).mapView}
                 />
-              </div>
+              </Envelope>
             )}
 
             {isUploadMode && (

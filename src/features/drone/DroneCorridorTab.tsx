@@ -17,6 +17,8 @@ import {
   type CountryValue,
 } from "@/lib/countries";
 import type { Endpoints } from "@/components/map/EndpointPickMap";
+import { Envelope } from "@/components/layout/Envelope";
+import { useCollapseOnResult } from "@/hooks/useCollapseOnResult";
 import type { AssessmentCell, DroneRoute } from "@/lib/geo/types";
 import type {
   Basemap,
@@ -142,6 +144,9 @@ type ResultView = (typeof RESULT_VIEWS)[number];
 
 export function DroneCorridorTab() {
   const { run, rerank, reset, isRunning, phaseLabel, warning, error, result } = useDroneCorridor();
+
+  // The endpoint picker folds away once the route map has something on it.
+  const [mapOpen, setMapOpen] = useCollapseOnResult(!!result);
 
   const [country, setCountry] = useState<CountryValue>("uk");
   const [method, setMethod] = useState<InputMode>(COORD_MODE);
@@ -347,7 +352,11 @@ export function DroneCorridorTab() {
               </div>
             )}
             {method === MAP_MODE && (
-              <div className="space-y-1.5">
+              <Envelope
+                title="Origin and destination"
+                open={mapOpen}
+                onOpenChange={setMapOpen}
+              >
                 <EndpointPickMap
                   // Remount on a country change so the map opens over the new
                   // one, the same way the AOI maps are keyed.
@@ -366,7 +375,7 @@ export function DroneCorridorTab() {
                     : "Destination not set"}
                   {pickedKm !== null ? ` · ${pickedKm.toFixed(1)} km apart` : ""}
                 </p>
-              </div>
+              </Envelope>
             )}
           </div>
 
