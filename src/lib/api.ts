@@ -198,6 +198,41 @@ export function assessArea(input: {
   );
 }
 
+export interface SiteSelectionResponse {
+  /** The net-desired table, narrowed to the user's own columns. */
+  rows: Record<string, unknown>[];
+  /** Which column of `rows` holds the H3 index. */
+  cellColumn: string;
+  /** Columns the map can be coloured by: the combined score, then criteria. */
+  scoreColumns: { key: string; label: string }[];
+  /** Criteria the returned table carried no column for. */
+  unmatchedCriteria: string[];
+}
+
+/**
+ * Site selection — desired criteria scored against undesired ones over an
+ * area of interest, returned as the net-desired table.
+ *
+ * The weightings are optional and omitted when the user set none, which
+ * leaves the backend to apply its own.
+ */
+export function runSiteSelection(input: {
+  apiKey: string;
+  desiredCriteria: string[];
+  undesiredCriteria: string[];
+  /** Only for a drawn or uploaded AOI. */
+  h3Cells?: string[];
+  /** "UK - all", "UK - area", "Map selection", "GeoJSON upload". */
+  spatialResolution?: string;
+  selectedArea?: string | null;
+  /** Which country's areas the named scopes are resolved against. */
+  country?: string;
+  desiredWeighting?: number[];
+  undesiredWeighting?: number[];
+}) {
+  return postJson<SiteSelectionResponse>("/api/eikon/site-selection", input);
+}
+
 export function findSafestRoutes(input: {
   apiKey: string;
   originHex: string;

@@ -154,6 +154,20 @@ export const BACKEND = {
   },
   safestRoute: { base: NGROK_BASE, path: "/eikon_safest_route_pathfinder", method: "POST" },
 
+  // ---- site selection (ngrok) ----
+  // Scores desired criteria against undesired ones over a set of H3 cells and
+  // returns the net-desired table in one call. Required fields, in the order
+  // the endpoint validates them: api_key, desired_criteria,
+  // undesired_criteria, h3_cells — plus the parallel
+  // desired_criteria_weighting / undesired_criteria_weighting lists. Both
+  // criteria lists must be non-empty.
+  siteSelection: { base: NGROK_BASE, path: "/eikon_site_selection", method: "POST" },
+
+  // Resolves a named area to the H3 cells covering it, so a by-area scope can
+  // be turned into the `h3_cells` the site selection endpoint requires without
+  // shipping the UK district geometry to the browser.
+  areaCells: { base: NGROK_BASE, path: "/get_h3_cells_for_area", method: "POST" },
+
   // ---- remote location assessment (ngrok, via eikonsai.jobs.get_location_verification) ----
   // One long-blocking POST kicks the job off; a separate endpoint reports the
   // latest checkpoint and (on completion) the full result. "fast" execution

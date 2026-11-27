@@ -4,9 +4,14 @@ import type { RGBA } from "@/lib/geo/risk";
 import type { Basemap } from "@/components/map/basemaps";
 
 /**
- * Legend for a risk choropleth: the natural-breaks class ramp, a switch for
+ * Legend for a scored choropleth: the natural-breaks class ramp, a switch for
  * the choropleth layer itself, an optional route key, and the basemap picker.
- * Shared by the drone corridor and risk assessment tabs.
+ * Shared by the drone corridor, risk assessment and site selection tabs.
+ *
+ * `title` and `min` exist for site selection, where the layer is whichever
+ * column the user selected rather than always a risk score, and where a net
+ * score can be negative — so the bottom of the ramp cannot be assumed to be
+ * zero. Both default to the risk behaviour.
  */
 export default function RiskLegend({
   binEdges,
@@ -17,6 +22,8 @@ export default function RiskLegend({
   onBasemap,
   showChoropleth,
   onToggleChoropleth,
+  title = "Risk Score",
+  min = 0,
 }: {
   binEdges: number[];
   classColors: RGBA[];
@@ -26,13 +33,15 @@ export default function RiskLegend({
   onBasemap: (b: Basemap) => void;
   showChoropleth: boolean;
   onToggleChoropleth: () => void;
+  title?: string;
+  min?: number;
 }) {
   const rgb = (c: RGBA) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
   return (
     <div className="space-y-4">
       <div className="rounded-lg border p-3">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-bold text-eikon-midnight">Risk Score</span>
+          <span className="text-xs font-bold text-eikon-midnight">{title}</span>
           <button
             onClick={onToggleChoropleth}
             aria-pressed={showChoropleth}
@@ -48,7 +57,7 @@ export default function RiskLegend({
         </div>
         <div className={showChoropleth ? "" : "opacity-40"}>
           {classColors.map((c, i) => {
-            const lower = i === 0 ? 0 : binEdges[i - 1];
+            const lower = i === 0 ? min : binEdges[i - 1];
             const upper = binEdges[i];
             return (
               <div key={i} className="mb-1 flex items-center gap-2">
@@ -63,7 +72,9 @@ export default function RiskLegend({
             );
           })}
           {classColors.length === 0 && (
-            <div className="text-xs text-eikon-muted">0.000 – {maxScore.toFixed(3)}</div>
+            <div className="text-xs text-eikon-muted">
+              {min.toFixed(3)} – {maxScore.toFixed(3)}
+            </div>
           )}
         </div>
         {showRouteKeys && (
