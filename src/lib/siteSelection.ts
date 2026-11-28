@@ -25,7 +25,7 @@
  * than on an exact string. That keeps a renamed or re-slugified column from
  * silently disappearing out of the map's selector.
  */
-import { isValidCell } from "h3-js";
+import { cellToLatLng, isValidCell } from "h3-js";
 import { kringLabel } from "@/lib/geo/kring";
 
 /** Criteria per list. Both lists are required and neither may be empty. */
@@ -40,6 +40,17 @@ export const SCORE_COLUMN = "cum_score";
  * mode, and listed first when it is, so it is what the map opens on.
  */
 export const CATCHMENT_SCORE_COLUMN = "site_selection_catchment_score";
+
+/**
+ * Where each cell places on the headline score, best first.
+ *
+ * Derived here rather than returned by the backend, from the values it did
+ * return: it is the same ordering the table already sorts by, named so it can
+ * be read off a row and used to colour the map. Computed over every scored
+ * cell, so a rank means the same thing whether the table is showing 200 rows
+ * or all of them.
+ */
+export const RANK_COLUMN = "site_selection_rank";
 
 /** The per-list catchment subtotals behind that score. */
 const CATCHMENT_AGGREGATES = [
@@ -176,6 +187,37 @@ export function criterionColumn(criterion: string, columns: string[]): string | 
   return partial.length === 1 ? partial[0] : null;
 }
 
+/**
+ * Standard competition ranking over one column, highest value first.
+ *
+ * Equal scores take the same rank and the next distinct score skips ahead
+ * (1, 2, 2, 4), because two cells that scored identically are not first and
+ * second — nothing in the data chooses between them. A cell the backend left
+ * unscored ranks last rather than being dropped, so every row has a rank.
+ */
+function rankByColumn(rows: SiteRow[], column: string): number[] {
+  const order = rows
+    .map((row, index) => ({ index, value: Number(row[column]) }))
+    .sort((a, b) => {
+      const aOk = Number.isFinite(a.value);
+      const bOk = Number.isFinite(b.value);
+      if (!aOk && !bOk) return 0;
+      if (!aOk) return 1;
+      if (!bOk) return -1;
+      return b.value - a.value;
+    });
+
+  const ranks = new Array<number>(rows.length);
+  let previous: number | null = null;
+  let rank = 0;
+  order.forEach((entry, position) => {
+    if (previous === null || entry.value !== previous) rank = position + 1;
+    ranks[entry.index] = rank;
+    previous = entry.value;
+  });
+  return ranks;
+}
+
 export interface ProjectedTable {
   rows: SiteRow[];
   /** Null when the response carried no recognisable H3 column. */
@@ -256,16 +298,63 @@ export function projectTable(rows: SiteRow[], criteria: string[]): ProjectedTabl
   ];
   const kept = new Set(keep);
 
+  // Ranked on the headline score — the catchment score, or the combined one
+  // on a plain run — so the rank answers "which cell is the better site"
+  // rather than whichever layer happens to be selected on the map.
+  const headline = scoreColumns[0]?.key ?? null;
+  const ranks = headline ? rankByColumn(rows, headline) : null;
+  if (ranks) scoreColumns.splice(1, 0, { key: RANK_COLUMN, label: "Rank" });
+
   return {
-    rows: rows.map((row) => {
+    rows: rows.map((row, i) => {
       const out: SiteRow = {};
       for (const column of kept) out[column] = row[column];
+      if (ranks) out[RANK_COLUMN] = ranks[i];
       return out;
     }),
     cellColumn,
     scoreColumns,
     unmatchedCriteria,
   };
+}
+
+/**
+ * The extent of a scored table, as the corner points fitView wants.
+ *
+ * A drawn or uploaded AOI has geometry in the browser and its outline is what
+ * frames the result map. A by-area run has none — the cells are resolved on
+ * the server from the area's name — so without this the map opens on the
+ * country, which is the whole of the UK for a run over one district.
+ *
+ * The cells that came back are themselves the extent, so the box is taken
+ * from their centres. Centres rather than boundaries: a cell's own span is a
+ * few hundred metres against an area of tens of kilometres, and fitView
+ * already leaves a margin.
+ */
+export function cellBounds(
+  rows: SiteRow[],
+  cellColumn: string,
+): [number, number][] {
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLon = Infinity;
+  let maxLon = -Infinity;
+
+  for (const row of rows) {
+    const cell = String(row[cellColumn] ?? "");
+    if (!cell || !isValidCell(cell)) continue;
+    const [lat, lon] = cellToLatLng(cell);
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lon < minLon) minLon = lon;
+    if (lon > maxLon) maxLon = lon;
+  }
+
+  if (!Number.isFinite(minLat)) return [];
+  return [
+    [minLon, minLat],
+    [maxLon, maxLat],
+  ];
 }
 
 /** Finite numbers only — a table can carry a null where a cell was not scored. */

@@ -21,6 +21,7 @@ import {
   CATCHMENT_MODES,
   MAP_SCOPE,
   MAX_CRITERIA,
+  RANK_COLUMN,
   MAX_WEIGHT_TOTAL,
   UPLOAD_SCOPE,
   catchmentLabel,
@@ -379,7 +380,7 @@ export function SiteSelectionTab() {
           Site Selection
         </h1>
         <p className="text-sm text-eikon-muted">
-          Cells ranked by what you want nearby, net of what you do not.
+          Look for locations based on what you want and what you don&apos;t want.
         </p>
       </div>
 
@@ -719,6 +720,13 @@ function Results({
 
   // Classified on the selected column, so switching column re-grades the map
   // rather than recolouring one fixed set of breaks.
+  // Rank runs the other way to a score: 1 is the best cell, not the lowest.
+  // The classifier always ramps cold-to-hot with the value, so the colours
+  // are reversed for rank and the legend is handed the same reversed list,
+  // keeping each band's colour and its range together.
+  const isRank = column === RANK_COLUMN;
+  const fmt = (n: number) => (isRank ? Math.round(n).toLocaleString() : n.toFixed(3));
+
   const { hexes, classColors, binEdges, stats } = useMemo(() => {
     // One value per row, so the classifier's labels line up with the cells
     // they colour. A cell the backend left unscored classifies as 0 rather
@@ -741,9 +749,18 @@ function Results({
     const mean = finite.length
       ? finite.reduce((a, b) => a + b, 0) / finite.length
       : 0;
+    const classColors = isRank ? [...cls.classColors].reverse() : cls.classColors;
     return {
-      hexes,
-      classColors: cls.classColors,
+      hexes: isRank
+        ? hexes.map((h, i) => ({
+            ...h,
+            color:
+              cls.kActual > 0
+                ? classColors[cls.classLabels[i]]
+                : h.color,
+          }))
+        : hexes,
+      classColors,
       binEdges: cls.binEdges,
       stats: {
         maxScore: finite.length ? Math.max(...finite) : 0,
@@ -752,7 +769,7 @@ function Results({
         cells: finite.length,
       },
     };
-  }, [rows, cellColumn, column, label, combined]);
+  }, [rows, cellColumn, column, label, combined, isRank]);
 
   const center = useMemo(
     () => (result.bounds.length > 0 ? fitView(result.bounds) : fallbackCenter),
@@ -777,9 +794,9 @@ function Results({
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Metric label="Cells Scored" value={stats.cells.toLocaleString()} />
-        <Metric label={`Mean ${label}`} value={stats.meanScore.toFixed(3)} />
-        <Metric label={`Max ${label}`} value={stats.maxScore.toFixed(3)} />
-        <Metric label={`Min ${label}`} value={stats.minScore.toFixed(3)} />
+        <Metric label={`Mean ${label}`} value={fmt(stats.meanScore)} />
+        <Metric label={`Max ${label}`} value={fmt(stats.maxScore)} />
+        <Metric label={`Min ${label}`} value={fmt(stats.minScore)} />
       </div>
 
       {result.unmatchedCriteria.length > 0 && (
@@ -830,6 +847,7 @@ function Results({
           <RiskLegend
             title={label}
             min={stats.minScore}
+            decimals={isRank ? 0 : 3}
             binEdges={binEdges}
             classColors={classColors}
             maxScore={stats.maxScore}
@@ -879,10 +897,13 @@ function DataTable({
     return [cellColumn, ...scored, ...Array.from(seen)];
   }, [rows, cellColumn, scoreColumns]);
 
-  const ranked = useMemo(
-    () => [...rows].sort((a, b) => Number(b[column]) - Number(a[column])),
-    [rows, column],
-  );
+  // Best first either way: a high score leads, and so does a low rank.
+  const ranked = useMemo(() => {
+    const direction = column === RANK_COLUMN ? -1 : 1;
+    return [...rows].sort(
+      (a, b) => direction * (Number(b[column]) - Number(a[column])),
+    );
+  }, [rows, column]);
 
   function downloadCsv() {
     const esc = (v: unknown) => {
@@ -938,7 +959,7 @@ function DataTable({
                           : "px-3 py-2"
                       }
                     >
-                      {formatValue(r[k])}
+                      {k === RANK_COLUMN ? String(r[k] ?? "—") : formatValue(r[k])}
                     </td>
                   ))}
                   {withLocation && (
@@ -1100,7 +1121,7 @@ function cellTooltip(
 ): string {
   const lines = [
     `<div>Hex: ${row[cellColumn] ?? ""}</div>`,
-    `<div>${label}: ${formatValue(row[column])}</div>`,
+    `<div>${label}: ${column === RANK_COLUMN ? (row[column] ?? "—") : formatValue(row[column])}</div>`,
   ];
   if (combined && combined.key !== column) {
     lines.push(

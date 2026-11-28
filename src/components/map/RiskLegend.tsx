@@ -24,6 +24,7 @@ export default function RiskLegend({
   onToggleChoropleth,
   title = "Risk Score",
   min = 0,
+  decimals = 3,
 }: {
   binEdges: number[];
   classColors: RGBA[];
@@ -35,6 +36,8 @@ export default function RiskLegend({
   onToggleChoropleth: () => void;
   title?: string;
   min?: number;
+  /** 0 for a layer counted in whole numbers, such as a rank. */
+  decimals?: number;
 }) {
   const rgb = (c: RGBA) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
   return (
@@ -66,14 +69,14 @@ export default function RiskLegend({
                   style={{ background: rgb(c), opacity: 0.85 }}
                 />
                 <span className="text-xs text-eikon-muted">
-                  {lower.toFixed(3)} – {upper.toFixed(3)}
+                  {lower.toFixed(decimals)} – {upper.toFixed(decimals)}
                 </span>
               </div>
             );
           })}
           {classColors.length === 0 && (
             <div className="text-xs text-eikon-muted">
-              {min.toFixed(3)} – {maxScore.toFixed(3)}
+              {min.toFixed(decimals)} – {maxScore.toFixed(decimals)}
             </div>
           )}
         </div>

@@ -5,6 +5,7 @@ import { runSiteSelection, type SiteSelectionResponse } from "@/lib/api";
 import type { Criterion, ScoreColumn, SiteRow } from "@/lib/siteSelection";
 import {
   catchmentProblem,
+  cellBounds,
   isCellScope,
   toPayloadLists,
   weightingProblem,
@@ -128,7 +129,10 @@ export function useSiteSelection() {
           scoreColumns: res.scoreColumns,
           unmatchedCriteria: res.unmatchedCriteria ?? [],
           owners,
-          bounds,
+          // A by-area run submits no geometry, so the scored cells are the
+          // only extent there is; an AOI keeps its own outline, which frames
+          // what was asked for rather than what came back.
+          bounds: bounds.length > 0 ? bounds : cellBounds(res.rows, res.cellColumn),
           desired: d.criteria,
           undesired: u.criteria,
           catchment: catchment ? { desired: d.krings, undesired: u.krings } : null,
