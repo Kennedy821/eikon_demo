@@ -229,6 +229,11 @@ export function runSiteSelection(input: {
   country?: string;
   desiredWeighting?: number[];
   undesiredWeighting?: number[];
+  /** True to score each criterion over its catchment rather than the cell. */
+  catchment?: boolean;
+  /** Catchment radii in H3 rings, one per criterion, for a catchment run. */
+  desiredKrings?: number[];
+  undesiredKrings?: number[];
 }) {
   return postJson<SiteSelectionResponse>("/api/eikon/site-selection", input);
 }

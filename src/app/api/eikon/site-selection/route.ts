@@ -5,6 +5,8 @@ import { fetchSiteSelection } from "@/lib/server/siteSelection";
 import { fetchAreaCells } from "@/lib/server/areaCells";
 
 import {
+  MAX_CATCHMENT_KRING,
+  MIN_CATCHMENT_KRING,
   MAX_CRITERIA,
   MAX_WEIGHT_TOTAL,
   isCellScope,
@@ -20,7 +22,8 @@ const CELL_LIMIT = 200_000;
 /**
  * POST /api/eikon/site-selection
  *   { apiKey, desiredCriteria[], desiredWeighting[], undesiredCriteria[],
- *     undesiredWeighting[], h3Cells[] }
+ *     undesiredWeighting[], desiredKrings[], undesiredKrings[], catchment,
+ *     h3Cells[] }
  *   -> { rows, cellColumn, scoreColumns, unmatchedCriteria }
  *
  * The net-desired table for an area of interest: the desired criteria scored
@@ -55,6 +58,9 @@ export async function POST(req: NextRequest) {
       desiredWeighting?: number[];
       undesiredCriteria?: string[];
       undesiredWeighting?: number[];
+      desiredKrings?: number[];
+      undesiredKrings?: number[];
+      catchment?: boolean;
       h3Cells?: string[];
       spatialResolution?: string;
       selectedArea?: string | null;
@@ -117,6 +123,37 @@ export async function POST(req: NextRequest) {
       return total > MAX_WEIGHT_TOTAL + 1e-9 ? undefined : supplied;
     };
 
+    // Catchment radii, unlike weights, cannot be quietly dropped when they do
+    // not line up: dropping them turns a catchment run into a plain one and
+    // answers a different question than the one that was asked, so a bad list
+    // is refused instead.
+    let desiredKrings: number[] | undefined;
+    let undesiredKrings: number[] | undefined;
+    if (body.catchment) {
+      const rings = (supplied: number[] | undefined, criteria: string[]) =>
+        supplied?.length === criteria.length &&
+        // 0 is the cell on its own, and the floor rather than a missing
+        // value: a criterion always carries a radius in catchment mode.
+        supplied.every(
+          (k) =>
+            Number.isInteger(k) &&
+            k >= MIN_CATCHMENT_KRING &&
+            k <= MAX_CATCHMENT_KRING,
+        )
+          ? supplied
+          : undefined;
+      desiredKrings = rings(body.desiredKrings, desiredCriteria);
+      undesiredKrings = rings(body.undesiredKrings, undesiredCriteria);
+      if (!desiredKrings || !undesiredKrings) {
+        return NextResponse.json(
+          {
+            error: `With a catchment area, every criterion needs a radius between ${MIN_CATCHMENT_KRING} and ${MAX_CATCHMENT_KRING} rings.`,
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     // A named scope carries no cells, so they are looked up before anything
     // is scored. Done before the worker gate: there is no point waking the
     // assessment worker for an area that resolves to nothing.
@@ -163,6 +200,8 @@ export async function POST(req: NextRequest) {
       h3Cells: cells,
       desiredWeighting: weights(body.desiredWeighting, desiredCriteria),
       undesiredWeighting: weights(body.undesiredWeighting, undesiredCriteria),
+      desiredKrings,
+      undesiredKrings,
     });
 
     if (rows.length === 0) {

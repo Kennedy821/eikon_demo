@@ -8,12 +8,25 @@
  * submitted criterion are theirs; the rest are the model's internals and are
  * dropped before the table leaves the route.
  *
+ * A catchment run answers with a second set of columns — a catchment score
+ * per criterion, one per list, and `site_selection_catchment_score` over the
+ * lot — and when they are there they are the whole answer. The in-cell
+ * columns are then dropped alongside the internals: the mode was run to score
+ * a cell on its surroundings, and showing both sets side by side offers two
+ * numbers per criterion where the user asked a single question.
+ *
+ * Which run it was is read off the response rather than passed in. The
+ * catchment columns exist only when catchment mode was asked for, so their
+ * presence is the fact itself, and a table can never be labelled as one kind
+ * of run while holding the other's columns.
+ *
  * The naming of a criterion's column is the backend's choice, not ours, and a
  * criterion is free text, so the match is made on a normalised form rather
  * than on an exact string. That keeps a renamed or re-slugified column from
  * silently disappearing out of the map's selector.
  */
 import { isValidCell } from "h3-js";
+import { kringLabel } from "@/lib/geo/kring";
 
 /** Criteria per list. Both lists are required and neither may be empty. */
 export const MAX_CRITERIA = 5;
@@ -22,8 +35,32 @@ export const MAX_CRITERIA = 5;
 export const SCORE_COLUMN = "cum_score";
 
 /**
+ * The catchment run's headline: desired against undesired, each measured over
+ * its own catchment rather than within the cell. Present only in catchment
+ * mode, and listed first when it is, so it is what the map opens on.
+ */
+export const CATCHMENT_SCORE_COLUMN = "site_selection_catchment_score";
+
+/** The per-list catchment subtotals behind that score. */
+const CATCHMENT_AGGREGATES = [
+  { column: "desired_catchment_score", label: "Desired catchment" },
+  { column: "undesired_catchment_score", label: "Undesired catchment" },
+];
+
+/**
+ * How the backend names one criterion's catchment column: the criterion's own
+ * column with this appended. Matched through criterionColumn like any other,
+ * so a renamed column still resolves.
+ */
+const CATCHMENT_SUFFIX = "catchment";
+
+/**
  * Hierarchical scores, kept because they are the per-resolution breakdown of
  * the same answer rather than model internals.
+ *
+ * They break down `cum_score`, the in-cell answer, and the backend returns no
+ * catchment equivalent — so they go with it on a catchment run rather than
+ * sitting beside a score they are not a breakdown of.
  */
 export const HIERARCHY_COLUMNS = ["pred_h9", "pred_h8", "pred_h7"] as const;
 
@@ -164,30 +201,58 @@ export function projectTable(rows: SiteRow[], criteria: string[]): ProjectedTabl
 
   const columns = Object.keys(rows[0]);
   const cellColumn = detectCellColumn(rows);
-  const scoreKey = columns.find((c) => normaliseColumn(c) === SCORE_COLUMN) ?? null;
-  const hierarchy = HIERARCHY_COLUMNS.map((h) =>
-    columns.find((c) => normaliseColumn(c) === h),
-  ).filter((c): c is string => !!c);
+  const byName = (normalised: string) =>
+    columns.find((c) => normaliseColumn(c) === normalised) ?? null;
+  const scoreKey = byName(SCORE_COLUMN);
+  const catchmentKey = byName(CATCHMENT_SCORE_COLUMN);
+  const hierarchy = HIERARCHY_COLUMNS.map((h) => byName(h)).filter(
+    (c): c is string => !!c,
+  );
 
-  const scoreColumns: ScoreColumn[] = scoreKey
-    ? [{ key: scoreKey, label: "Combined score" }]
-    : [];
-  const unmatchedCriteria: string[] = [];
-  for (const criterion of criteria) {
-    const key = criterionColumn(criterion, columns);
-    if (!key || key === scoreKey || key === cellColumn) {
-      unmatchedCriteria.push(criterion);
-      continue;
-    }
+  const scoreColumns: ScoreColumn[] = [];
+  const add = (key: string | null, label: string) => {
+    if (!key || key === cellColumn) return;
     // A criterion typed twice must not produce the column twice.
-    if (scoreColumns.some((c) => c.key === key)) continue;
-    scoreColumns.push({ key, label: criterion });
+    if (scoreColumns.some((c) => c.key === key)) return;
+    scoreColumns.push({ key, label });
+  };
+
+  const unmatchedCriteria: string[] = [];
+  const isCatchmentRun = !!catchmentKey;
+
+  if (isCatchmentRun) {
+    // The headline leads, so it is what the map opens on, then the two list
+    // subtotals behind it, then one column per criterion. A criterion needs
+    // no "(catchment)" in its label here: every column on the table is one.
+    add(catchmentKey, "Site selection score");
+    for (const aggregate of CATCHMENT_AGGREGATES) {
+      add(byName(aggregate.column), aggregate.label);
+    }
+    for (const criterion of criteria) {
+      const key = criterionColumn(`${criterion} ${CATCHMENT_SUFFIX}`, columns);
+      if (!key || key === catchmentKey || key === cellColumn) {
+        unmatchedCriteria.push(criterion);
+      } else {
+        add(key, criterion);
+      }
+    }
+  } else {
+    add(scoreKey, "Combined score");
+    for (const criterion of criteria) {
+      const key = criterionColumn(criterion, columns);
+      if (!key || key === scoreKey || key === cellColumn) {
+        unmatchedCriteria.push(criterion);
+      } else {
+        add(key, criterion);
+      }
+    }
   }
 
   const keep = [
     ...(cellColumn ? [cellColumn] : []),
     ...scoreColumns.map((c) => c.key),
-    ...hierarchy,
+    // The hierarchy breaks down cum_score, which a catchment run does not show.
+    ...(isCatchmentRun ? [] : hierarchy),
   ];
   const kept = new Set(keep);
 
@@ -228,19 +293,26 @@ export function numericValues(rows: SiteRow[], column: string): number[] {
 export interface Criterion {
   text: string;
   weight: number | null;
+  /**
+   * How far around a cell this criterion is looked for, as a count of H3
+   * rings. Only sent in catchment mode, and never null: a kring list has to
+   * line up one-for-one with its criteria, so there is no "unset" to send and
+   * every criterion carries the default until it is changed.
+   */
+  kring: number;
 }
 
 /** Weights are shares, so a list cannot claim more than the whole. */
 export const MAX_WEIGHT_TOTAL = 1;
 
 export function newCriterion(text = ""): Criterion {
-  return { text, weight: null };
+  return { text, weight: null, kring: DEFAULT_CATCHMENT_KRING };
 }
 
 /** Criteria with something typed in them; the blank rows are not criteria. */
 function filled(criteria: Criterion[]): Criterion[] {
   return criteria
-    .map((c) => ({ text: c.text.trim(), weight: c.weight }))
+    .map((c) => ({ text: c.text.trim(), weight: c.weight, kring: c.kring }))
     .filter((c) => c.text.length > 0);
 }
 
@@ -283,6 +355,8 @@ export interface CriteriaPayload {
   criteria: string[];
   /** Absent when the user set no weights — the backend then uses its own. */
   weighting?: number[];
+  /** One per criterion, always populated; only sent in catchment mode. */
+  krings: number[];
 }
 
 /**
@@ -297,5 +371,83 @@ export function toPayloadLists(criteria: Criterion[]): CriteriaPayload {
   return {
     criteria: rows.map((c) => c.text),
     ...(weighted ? { weighting: rows.map((c) => c.weight!) } : {}),
+    krings: rows.map((c) => c.kring),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Catchment mode
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a criterion has to be in the cell itself or merely near it.
+ *
+ * Without a catchment area a cell scores on what it contains, which is the
+ * original behaviour and what the backend does when `catchment_mode` is left
+ * out of the payload. With one, each criterion carries a distance and a cell
+ * scores on what lies within that distance of it — so "good road access"
+ * within 348m counts towards a cell that has no road in it at all.
+ *
+ * The distance travels as a k-ring, converted from metres by the shared grid
+ * arithmetic in geo/kring. Ring counts rather than metres are offered in the
+ * UI because only multiples of the edge length are expressible: a free metres
+ * field would accept 500m and quietly send the 348m that is actually searched.
+ */
+export const CATCHMENT_MODES = ["off", "on"] as const;
+export type CatchmentMode = (typeof CATCHMENT_MODES)[number];
+
+export const CATCHMENT_LABELS: Record<CatchmentMode, string> = {
+  off: "No catchment area",
+  on: "With catchment area",
+};
+
+/**
+ * The widest catchment offered, in rings.
+ *
+ * 10 rings is 1,740m, which is a walkable distance and a plausible catchment
+ * for a site. It is a UI choice rather than a backend limit — nothing upstream
+ * was found to cap it — so it can be raised if someone wants a wider one.
+ */
+export const MAX_CATCHMENT_KRING = 10;
+
+/**
+ * The narrowest catchment offered: no ring at all, the cell on its own.
+ *
+ * A k-ring of 0 is the centre cell by itself, which is the natural floor for
+ * a distance expressed in rings and lets one criterion be scored in-cell
+ * while its neighbours are scored over a catchment. The endpoint rejected it
+ * at first — "one positive integer k-ring per criterion" — and is being
+ * changed to take it, so a 0 here depends on that change being deployed.
+ */
+export const MIN_CATCHMENT_KRING = 0;
+
+/**
+ * Two rings, 348m: the corridor tab's default landing distance, and about the
+ * span of a res-9 cell's own neighbourhood.
+ */
+export const DEFAULT_CATCHMENT_KRING = 2;
+
+/** Every ring count the selector offers. */
+export const CATCHMENT_KRING_OPTIONS = Array.from(
+  { length: MAX_CATCHMENT_KRING - MIN_CATCHMENT_KRING + 1 },
+  (_, i) => MIN_CATCHMENT_KRING + i,
+);
+
+/** What the selector shows for a ring count. */
+export function catchmentLabel(kring: number): string {
+  return kring === 0 ? "Cell only" : kringLabel(kring);
+}
+
+/** Why this list's catchment areas cannot be sent, or null if they can. */
+export function catchmentProblem(criteria: Criterion[]): string | null {
+  const rows = filled(criteria);
+  const bad = rows.some(
+    (c) =>
+      !Number.isInteger(c.kring) ||
+      c.kring < MIN_CATCHMENT_KRING ||
+      c.kring > MAX_CATCHMENT_KRING,
+  );
+  return bad
+    ? `Each catchment area must be between ${MIN_CATCHMENT_KRING} and ${MAX_CATCHMENT_KRING} rings.`
+    : null;
 }

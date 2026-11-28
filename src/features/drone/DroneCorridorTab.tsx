@@ -9,6 +9,7 @@ import { classifyRiskScores, riskScoreToColor } from "@/lib/geo/risk";
 import { hexTooltip } from "@/lib/geo/hexTooltip";
 import { fitView } from "@/lib/geo/mapFit";
 import { routeToWkt, wktCrs } from "@/lib/geo/corridor";
+import { H9_EDGE_M, metresToKring } from "@/lib/geo/kring";
 import {
   COUNTRIES,
   countriesByRegion,
@@ -40,7 +41,6 @@ const EndpointPickMap = dynamic(() => import("@/components/map/EndpointPickMap")
 });
 const RiskLegend = dynamic(() => import("@/components/map/RiskLegend"), { ssr: false });
 
-const H9_EDGE_M = 174;
 const DEFAULT_CRITERIA = ["major industrial areas", "residential houses", "lots of buildings"];
 
 const COUNTRY_GROUPS = countriesByRegion(COUNTRIES);
@@ -268,7 +268,7 @@ export function DroneCorridorTab() {
       origin: coords.origin,
       dest: coords.dest,
       bufferMetres: Math.round(bufferKm * 1000),
-      kring: Math.floor(landingM / H9_EDGE_M),
+      kring: metresToKring(landingM),
       criteria: trimmed,
       country,
     });

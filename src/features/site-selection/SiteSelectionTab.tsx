@@ -16,15 +16,21 @@ import {
 } from "@/hooks/useSiteSelection";
 import { usePublishPageContext } from "@/hooks/usePageContext";
 import {
+  CATCHMENT_KRING_OPTIONS,
+  CATCHMENT_LABELS,
+  CATCHMENT_MODES,
   MAP_SCOPE,
   MAX_CRITERIA,
   MAX_WEIGHT_TOTAL,
   UPLOAD_SCOPE,
+  catchmentLabel,
+  catchmentProblem,
   hasWeighting,
   newCriterion,
   numericValues,
   weightTotal,
   weightingProblem,
+  type CatchmentMode,
   type Criterion,
 } from "@/lib/siteSelection";
 import { classifyRiskScores, riskScoreToColor } from "@/lib/geo/risk";
@@ -165,6 +171,7 @@ export function SiteSelectionTab() {
   const [undesired, setUndesired] = useState<Criterion[]>(
     DEFAULT_UNDESIRED.map((c) => newCriterion(c)),
   );
+  const [catchment, setCatchment] = useState<CatchmentMode>("off");
   const [view, setView] = useState<ResultView>("Site Map");
   const [basemap, setBasemap] = useState<Basemap>("Dark");
   // The drawing map folds away once the result map has something on it.
@@ -267,8 +274,17 @@ export function SiteSelectionTab() {
         tab: "Site Selection",
         params: {
           Country: countryLabel(country),
-          "Desired criteria": result.desired.join(", "),
-          "Undesired criteria": result.undesired.join(", "),
+          "Desired criteria": describeCriteria(
+            result.desired,
+            result.catchment?.desired,
+          ),
+          "Undesired criteria": describeCriteria(
+            result.undesired,
+            result.catchment?.undesired,
+          ),
+          Catchment: result.catchment
+            ? "each criterion scored over its own catchment area"
+            : undefined,
           "Area of interest":
             scopeMode === "area"
               ? areaName
@@ -319,8 +335,11 @@ export function SiteSelectionTab() {
     ]),
   );
 
-  const desiredProblem = weightingProblem(desired);
-  const undesiredProblem = weightingProblem(undesired);
+  const withCatchment = catchment === "on";
+  const desiredProblem =
+    weightingProblem(desired) ?? (withCatchment ? catchmentProblem(desired) : null);
+  const undesiredProblem =
+    weightingProblem(undesired) ?? (withCatchment ? catchmentProblem(undesired) : null);
   const hasDesired = desired.some((c) => c.text.trim());
   const hasUndesired = undesired.some((c) => c.text.trim());
   const overLimit = cells.length > CELL_LIMIT;
@@ -342,6 +361,7 @@ export function SiteSelectionTab() {
       country,
       desired,
       undesired,
+      catchment: withCatchment,
       owners,
       bounds: bounds
         ? [
@@ -545,6 +565,26 @@ export function SiteSelectionTab() {
             )}
           </div>
 
+          <div className="space-y-3 rounded-lg border p-4">
+            <h2 className="text-sm font-semibold text-eikon-midnight">Mode</h2>
+            <div className="flex gap-2">
+              {CATCHMENT_MODES.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setCatchment(m)}
+                  className={`flex-1 rounded border px-3 py-1.5 text-sm ${
+                    catchment === m
+                      ? "border-eikon-accent bg-eikon-accent text-white"
+                      : "text-eikon-midnight"
+                  }`}
+                >
+                  {CATCHMENT_LABELS[m]}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Two panels rather than one long column of inputs: the second list
               is collapsed until it is wanted, which keeps the whole form on
               screen next to the map. */}
@@ -554,6 +594,7 @@ export function SiteSelectionTab() {
             criteria={desired}
             onChange={setDesired}
             problem={desiredProblem}
+            withCatchment={withCatchment}
             defaultOpen
           />
           <CriteriaPanel
@@ -562,6 +603,7 @@ export function SiteSelectionTab() {
             criteria={undesired}
             onChange={setUndesired}
             problem={undesiredProblem}
+            withCatchment={withCatchment}
           />
 
           <button
@@ -825,14 +867,17 @@ function DataTable({
 }) {
   const { rows, cellColumn, scoreColumns, owners } = result;
 
-  // Every column the route delivered, cell first. These are already only the
-  // user's own columns — the projection happens server-side.
+  // Every column the route delivered, cell first, then the scored columns in
+  // the order the map offers them so the headline score leads here too. These
+  // are already only the user's own columns — projection is server-side.
   const columns = useMemo(() => {
     const seen = new Set<string>();
     for (const row of rows) Object.keys(row).forEach((k) => seen.add(k));
     seen.delete(cellColumn);
-    return [cellColumn, ...Array.from(seen)];
-  }, [rows, cellColumn]);
+    const scored = scoreColumns.map((c) => c.key).filter((k) => seen.has(k));
+    for (const k of scored) seen.delete(k);
+    return [cellColumn, ...scored, ...Array.from(seen)];
+  }, [rows, cellColumn, scoreColumns]);
 
   const ranked = useMemo(
     () => [...rows].sort((a, b) => Number(b[column]) - Number(a[column])),
@@ -934,6 +979,7 @@ function CriteriaPanel({
   criteria,
   onChange,
   problem,
+  withCatchment,
   defaultOpen = false,
 }: {
   title: string;
@@ -941,6 +987,8 @@ function CriteriaPanel({
   criteria: Criterion[];
   onChange: (c: Criterion[]) => void;
   problem: string | null;
+  /** Show each criterion's catchment radius — only in catchment mode. */
+  withCatchment: boolean;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -990,6 +1038,22 @@ function CriteriaPanel({
             placeholder="Weight"
             className="w-24 shrink-0 rounded border px-2 py-1.5 text-sm"
           />
+          {/* A fixed set of distances rather than a metres field: the grid can
+              only express multiples of a cell's edge, so an open field would
+              take 500m and search the 348m it rounds down to. */}
+          {withCatchment && (
+            <select
+              value={c.kring}
+              onChange={(e) => setAt(i, { kring: Number(e.target.value) })}
+              className="w-28 shrink-0 rounded border px-2 py-1.5 text-sm"
+            >
+              {CATCHMENT_KRING_OPTIONS.map((k) => (
+                <option key={k} value={k}>
+                  {catchmentLabel(k)}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       ))}
       <div className="flex gap-2">
@@ -1044,6 +1108,21 @@ function cellTooltip(
     );
   }
   return lines.join("");
+}
+
+/**
+ * The criteria as submitted, each with its catchment where there was one, so
+ * the AI panel reports the distance a score was actually measured over rather
+ * than implying the criterion was found in the cell itself.
+ */
+function describeCriteria(criteria: string[], krings?: number[]): string {
+  if (!krings) return criteria.join(", ");
+  return criteria
+    .map((c, i) => {
+      const k = krings[i] ?? 0;
+      return k === 0 ? `${c} (cell only)` : `${c} (within ${catchmentLabel(k)})`;
+    })
+    .join(", ");
 }
 
 function formatValue(value: unknown): string {

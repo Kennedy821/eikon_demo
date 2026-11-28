@@ -3,7 +3,12 @@
 import { useCallback, useRef, useState } from "react";
 import { runSiteSelection, type SiteSelectionResponse } from "@/lib/api";
 import type { Criterion, ScoreColumn, SiteRow } from "@/lib/siteSelection";
-import { isCellScope, toPayloadLists, weightingProblem } from "@/lib/siteSelection";
+import {
+  catchmentProblem,
+  isCellScope,
+  toPayloadLists,
+  weightingProblem,
+} from "@/lib/siteSelection";
 import { useAuth } from "./useAuth";
 
 export interface SiteSelectionRunParams {
@@ -17,6 +22,8 @@ export interface SiteSelectionRunParams {
   country: string;
   desired: Criterion[];
   undesired: Criterion[];
+  /** True to score each criterion over its catchment area, not just the cell. */
+  catchment: boolean;
   /** Cell -> uploaded location id, so results can be grouped per location. */
   owners: Map<string, string>;
   /** Ring of the AOI's outline, for framing the result map. */
@@ -33,6 +40,8 @@ export interface SiteSelectionResult {
   /** The criteria this table was produced from, as submitted. */
   desired: string[];
   undesired: string[];
+  /** The catchment radii in rings, or null for a run without a catchment. */
+  catchment: { desired: number[]; undesired: number[] } | null;
 }
 
 /**
@@ -52,8 +61,17 @@ export function useSiteSelection() {
   const run = useCallback(
     async (params: SiteSelectionRunParams) => {
       if (inFlight.current || !apiKey) return;
-      const { h3Cells, spatialResolution, selectedArea, country, desired, undesired, owners, bounds } =
-        params;
+      const {
+        h3Cells,
+        spatialResolution,
+        selectedArea,
+        country,
+        desired,
+        undesired,
+        catchment,
+        owners,
+        bounds,
+      } = params;
 
       setError(null);
       // Only a drawn or uploaded AOI has cells to check: a whole-country or
@@ -80,6 +98,13 @@ export function useSiteSelection() {
         setError(weightIssue);
         return;
       }
+      const catchmentIssue = catchment
+        ? (catchmentProblem(desired) ?? catchmentProblem(undesired))
+        : null;
+      if (catchmentIssue) {
+        setError(catchmentIssue);
+        return;
+      }
 
       inFlight.current = true;
       setIsRunning(true);
@@ -94,6 +119,8 @@ export function useSiteSelection() {
           country,
           desiredWeighting: d.weighting,
           undesiredWeighting: u.weighting,
+          catchment,
+          ...(catchment ? { desiredKrings: d.krings, undesiredKrings: u.krings } : {}),
         });
         setResult({
           rows: res.rows,
@@ -104,6 +131,7 @@ export function useSiteSelection() {
           bounds,
           desired: d.criteria,
           undesired: u.criteria,
+          catchment: catchment ? { desired: d.krings, undesired: u.krings } : null,
         });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Site selection failed");

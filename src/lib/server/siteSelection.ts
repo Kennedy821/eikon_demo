@@ -23,6 +23,11 @@
  * weights the field is left out of the payload altogether rather than sent as
  * a list of equal shares: the backend has its own default, and inventing one
  * here would quietly override it.
+ *
+ * Catchment mode is the same arrangement: `catchment_mode` and the two kring
+ * lists go together or not at all. Sent, they ask the backend to score a cell
+ * on what lies within so many H3 rings of it rather than on what it contains;
+ * left out, the run is the plain one it has always been.
  */
 import { callBackend } from "@/lib/server/backend";
 
@@ -53,7 +58,18 @@ export async function fetchSiteSelection(input: {
   /** Omitted from the payload when absent. */
   desiredWeighting?: number[];
   undesiredWeighting?: number[];
+  /**
+   * Catchment radii in H3 rings, one per criterion. Both lists are present
+   * together or both absent — a catchment run with only half its radii would
+   * score one list against a distance and the other against nothing.
+   */
+  desiredKrings?: number[];
+  undesiredKrings?: number[];
 }): Promise<Record<string, unknown>[]> {
+  // The flag is what switches the backend's behaviour, so it is derived from
+  // the radii rather than passed in beside them: there is no way to ask for
+  // catchment mode here and forget to send the distances it needs.
+  const catchment = !!input.desiredKrings && !!input.undesiredKrings;
   const data = await callBackend<unknown>("siteSelection", {
     json: {
       api_key: input.apiKey,
@@ -63,6 +79,13 @@ export async function fetchSiteSelection(input: {
       ...(input.desiredWeighting ? { desired_criteria_weighting: input.desiredWeighting } : {}),
       ...(input.undesiredWeighting
         ? { undesired_criteria_weighting: input.undesiredWeighting }
+        : {}),
+      ...(catchment
+        ? {
+            catchment_mode: 1,
+            desired_criteria_krings: input.desiredKrings,
+            undesired_criteria_krings: input.undesiredKrings,
+          }
         : {}),
     },
     timeoutMs: SITE_SELECTION_TIMEOUT_MS,
